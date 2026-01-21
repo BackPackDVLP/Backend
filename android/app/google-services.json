@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "859349806124",
+    "project_id": "backpack-ba3ca",
+    "storage_bucket": "backpack-ba3ca.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:859349806124:android:3bfb5882f682ce657e7589",
+        "android_client_info": {
+          "package_name": "com.backpack.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1iivcd6HFx7Q5UkD71YTYEAhgU1jMu0A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:859349806124:android:5b3f4e4eb11f44fa7e7589",
+        "android_client_info": {
+          "package_name": "com.example.backend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1iivcd6HFx7Q5UkD71YTYEAhgU1jMu0A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

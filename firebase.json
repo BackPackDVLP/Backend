@@ -1,0 +1,55 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "backpack-ba3ca",
+          "appId": "1:859349806124:android:5b3f4e4eb11f44fa7e7589",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "backpack-ba3ca",
+          "appId": "1:859349806124:ios:57194b2979a1ea2d7e7589",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "backpack-ba3ca",
+          "appId": "1:859349806124:ios:57194b2979a1ea2d7e7589",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "backpack-ba3ca",
+          "configurations": {
+            "android": "1:859349806124:android:5b3f4e4eb11f44fa7e7589",
+            "ios": "1:859349806124:ios:57194b2979a1ea2d7e7589",
+            "macos": "1:859349806124:ios:57194b2979a1ea2d7e7589",
+            "web": "1:859349806124:web:6e3ab0532763916b7e7589",
+            "windows": "1:859349806124:web:32caa636f0873e787e7589"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
