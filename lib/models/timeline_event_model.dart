@@ -13,6 +13,11 @@ class TimelineEvent extends Equatable {
   final String imageURL;
   final String description;
   final List<BureauOffer>? bureauOffers;
+  final String? accommodation;
+  final String? transport;
+  final String? transportIcon;
+  final String? meals;
+  final String? activities;
 
   const TimelineEvent({
     required this.id,
@@ -24,6 +29,11 @@ class TimelineEvent extends Equatable {
     required this.isDestination,
     required this.imageURL,
     required this.description,
+    this.accommodation,
+    this.transport,
+    this.transportIcon,
+    this.meals,
+    this.activities,
     this.bureauOffers,
   });
 
@@ -38,12 +48,16 @@ class TimelineEvent extends Equatable {
       isDestination: snap['isDestination'] ?? false,
       imageURL: snap['imageURL'] ?? '',
       description:
-          snap['description'] ??
-          'Der er ingen beskrivelse af denne begivenhed',
+          snap['description'] ?? 'Der er ingen beskrivelse af denne begivenhed',
       bureauOffers: (snap['bureauOffers'] as List?)
               ?.map((e) => BureauOffer.fromSnapshot(e))
               .toList() ??
           [],
+      accommodation: snap['accommodation'],
+      transport: snap['transport'],
+      transportIcon: snap['transportIcon'],
+      meals: snap['meals'],
+      activities: snap['activities'],
     );
   }
 
@@ -61,6 +75,11 @@ class TimelineEvent extends Equatable {
       bureauOffers: (map['bureauOffers'] as List?)
           ?.map((e) => BureauOffer.fromSnapshot(e))
           .toList(),
+      accommodation: map['accommodation'],
+      transport: map['transport'],
+      transportIcon: map['transportIcon'],
+      meals: map['meals'],
+      activities: map['activities'],
     );
   }
 
@@ -76,6 +95,11 @@ class TimelineEvent extends Equatable {
       'imageURL': imageURL,
       'description': description,
       'bureauOffers': bureauOffers?.map((e) => e.toJson()).toList(),
+      'accommodation': accommodation,
+      'transport': transport,
+      'transportIcon': transportIcon,
+      'meals': meals,
+      'activities': activities,
     };
   }
 
@@ -93,5 +117,10 @@ class TimelineEvent extends Equatable {
         imageURL,
         description,
         bureauOffers,
+        accommodation,
+        transport,
+        transportIcon,
+        meals,
+        activities,
       ];
 }

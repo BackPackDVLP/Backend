@@ -34,27 +34,29 @@ class TimelineEventBox extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8.0, bottom: 8, top: 8, left: 13),
       child: SizedBox(
-        width: 200,
+        width: 375,
         child: GestureDetector(
           onTap: () async {
             await showDialog(
               context: context,
               builder: (BuildContext context) {
                 return TimelineDialog(
-                    event: event, groupInformation: groupInformation, repository: repository,);
+                  event: event,
+                  groupInformation: groupInformation,
+                  repository: repository,
+                );
               },
             );
             // After the dialog is closed, trigger a refresh of the group information.
             if (context.mounted) {
-              context.read<GroupInformationBloc>().add(LoadGroupInformationById(groupId: groupInformation.groupId));
+              context.read<GroupInformationBloc>().add(
+                  LoadGroupInformationById(groupId: groupInformation.groupId));
             }
           },
           child: Container(
             width: MediaQuery.of(context).size.width * 0.9,
             height: 150,
             decoration: BoxDecoration(
-            
-          
               borderRadius: BorderRadius.circular(10.0),
               color: Colors.grey[300], // Fallback farve
               boxShadow: [
@@ -79,11 +81,15 @@ class TimelineEventBox extends StatelessWidget {
                         colorBlendMode: BlendMode.darken,
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         },
                         errorBuilder: (context, error, stackTrace) {
-                          print('Error loading image: $error\nStacktrace: $stackTrace');
-                          return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
+                          print(
+                              'Error loading image: $error\nStacktrace: $stackTrace');
+                          return const Center(
+                              child:
+                                  Icon(Icons.broken_image, color: Colors.grey));
                         },
                       ),
                     ),

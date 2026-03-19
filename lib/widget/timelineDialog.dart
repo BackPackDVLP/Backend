@@ -1,15 +1,16 @@
-import 'dart:io';
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/bureau_offer.dart';
 import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'unsplash_image_picker.dart'; // <-- Import the picker
+import 'package:google_fonts/google_fonts.dart';
+import 'unsplash_image_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 class TimelineDialog extends StatefulWidget {
   final TimelineEvent? event;
@@ -32,13 +33,25 @@ class _TimelineDialogState extends State<TimelineDialog> {
   late TextEditingController countryController;
   late TextEditingController descriptionController;
   late TextEditingController imageUrlController;
-  late TextEditingController dayNumberController;
+  late TextEditingController accommodationController;
+  late TextEditingController transportController;
+  late TextEditingController mealsController;
+  late TextEditingController activitiesController;
+
   late bool isDestination;
   late bool isEditing;
   late DateTime startDate;
   late DateTime endDate;
 
   List<BureauOffer> offers = [];
+
+  bool _showAccommodationField = false;
+  bool _showTransportField = false;
+  bool _showMealsField = false;
+  bool _showActivitiesField = false;
+
+  String? selectedTransportIcon;
+
   final List<String> _sessionUploadedImages = [];
 
   @override
@@ -47,17 +60,36 @@ class _TimelineDialogState extends State<TimelineDialog> {
     isEditing = widget.event != null;
 
     typeController = TextEditingController(text: widget.event?.type ?? '');
-    countryController = TextEditingController(text: widget.event?.country ?? '');
-    descriptionController = TextEditingController(text: widget.event?.description ?? '');
-    imageUrlController = TextEditingController(text: widget.event?.imageURL ?? '');
+    countryController =
+        TextEditingController(text: widget.event?.country ?? '');
+    descriptionController =
+        TextEditingController(text: widget.event?.description ?? '');
+    imageUrlController =
+        TextEditingController(text: widget.event?.imageURL ?? '');
     imageUrlController.addListener(() {
       if (mounted) setState(() {});
     });
-    dayNumberController = TextEditingController(text: widget.event?.dayNumber.toString() ?? '');
+    accommodationController =
+        TextEditingController(text: widget.event?.accommodation ?? '');
+    transportController =
+        TextEditingController(text: widget.event?.transport ?? '');
+    mealsController = TextEditingController(text: widget.event?.meals ?? '');
+    activitiesController =
+        TextEditingController(text: widget.event?.activities ?? '');
+
+    selectedTransportIcon = widget.event?.transportIcon;
     isDestination = widget.event?.isDestination ?? false;
     startDate = widget.event?.startDate ?? DateTime.now();
-    endDate = widget.event?.endDate ?? DateTime.now().add(const Duration(days: 1));
-    offers = widget.event?.bureauOffers != null ? List.from(widget.event!.bureauOffers!) : [];
+    endDate =
+        widget.event?.endDate ?? DateTime.now().add(const Duration(days: 1));
+    offers = widget.event?.bureauOffers != null
+        ? List.from(widget.event!.bureauOffers!)
+        : [];
+
+    _showAccommodationField = widget.event?.accommodation?.isNotEmpty ?? false;
+    _showTransportField = widget.event?.transport?.isNotEmpty ?? false;
+    _showMealsField = widget.event?.meals?.isNotEmpty ?? false;
+    _showActivitiesField = widget.event?.activities?.isNotEmpty ?? false;
   }
 
   @override
@@ -66,27 +98,41 @@ class _TimelineDialogState extends State<TimelineDialog> {
     countryController.dispose();
     descriptionController.dispose();
     imageUrlController.dispose();
-    dayNumberController.dispose();
+    accommodationController.dispose();
+    transportController.dispose();
+    mealsController.dispose();
+    activitiesController.dispose();
     super.dispose();
   }
 
   Future<void> _saveChanges() async {
     try {
-      final eventId = widget.event?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final eventId =
+          widget.event?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
       final savedEvent = TimelineEvent(
         id: eventId,
         type: typeController.text,
         country: countryController.text,
         startDate: startDate,
         endDate: endDate,
-        dayNumber: int.tryParse(dayNumberController.text) ?? 0,
+        dayNumber: 1,
         isDestination: isDestination,
-        imageURL: imageUrlController.text.trim().replaceAll(' ', '%20').replaceAll(RegExp(r'[\r\n]'), ''),
+        imageURL: imageUrlController.text
+            .trim()
+            .replaceAll(' ', '%20')
+            .replaceAll(RegExp(r'[\r\n]'), ''),
         description: descriptionController.text,
         bureauOffers: offers,
+        accommodation: accommodationController.text,
+        transport: transportController.text,
+        transportIcon: selectedTransportIcon,
+        meals: mealsController.text,
+        activities: activitiesController.text,
       );
 
-      final groupDocRef = widget.repository.firestore.collection('groups').doc(widget.groupInformation.groupId);
+      final groupDocRef = widget.repository.firestore
+          .collection('groups')
+          .doc(widget.groupInformation.groupId);
       final groupSnapshot = await groupDocRef.get();
       final groupData = groupSnapshot.data();
 
@@ -105,6 +151,11 @@ class _TimelineDialogState extends State<TimelineDialog> {
         'isDestination': savedEvent.isDestination,
         'imageURL': savedEvent.imageURL,
         'description': savedEvent.description,
+        'accommodation': savedEvent.accommodation,
+        'transport': savedEvent.transport,
+        'transportIcon': savedEvent.transportIcon,
+        'meals': savedEvent.meals,
+        'activities': savedEvent.activities,
         'bureauOffers': savedEvent.bureauOffers
                 ?.map((o) => {
                       'offerName': o.offerName,
@@ -112,11 +163,13 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       'imageURL': o.imageURL,
                       'description': o.description,
                     })
-                .toList() ?? [],
+                .toList() ??
+            [],
       };
 
       if (isEditing) {
-        int eventIndex = eventsList.indexWhere((event) => event['id'] == widget.event!.id);
+        int eventIndex =
+            eventsList.indexWhere((event) => event['id'] == widget.event!.id);
         if (eventIndex != -1) {
           eventsList[eventIndex] = eventMap;
         } else {
@@ -156,7 +209,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
 
   Future<void> _deleteEvent() async {
     try {
-      final groupDocRef = widget.repository.firestore.collection('groups').doc(widget.groupInformation.groupId);
+      final groupDocRef = widget.repository.firestore
+          .collection('groups')
+          .doc(widget.groupInformation.groupId);
       final groupSnapshot = await groupDocRef.get();
       final groupData = groupSnapshot.data();
 
@@ -188,7 +243,8 @@ class _TimelineDialogState extends State<TimelineDialog> {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Bekræft sletning'),
-          content: const Text('Er du sikker på, at du vil slette denne begivenhed? Handlingen kan ikke fortrydes.'),
+          content: const Text(
+              'Er du sikker på, at du vil slette denne begivenhed? Handlingen kan ikke fortrydes.'),
           actions: <Widget>[
             TextButton(
               child: const Text('Annuller'),
@@ -233,58 +289,222 @@ class _TimelineDialogState extends State<TimelineDialog> {
     final nameController = TextEditingController(text: offer?.offerName ?? '');
     final teaserController = TextEditingController(text: offer?.teaser ?? '');
     final imageController = TextEditingController(text: offer?.imageURL ?? '');
-    final detailsController = TextEditingController(text: offer?.description ?? '');
+    final detailsController =
+        TextEditingController(text: offer?.description ?? '');
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(offer == null ? 'Add Offer' : 'Edit Offer'),
-        content: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Offer Name')),
-              TextField(controller: teaserController, decoration: const InputDecoration(labelText: 'Teaser')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.navActive),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => UnsplashImagePicker(
-                      onImageSelected: (url) {
-                        setState(() => imageController.text = url);
-                      },
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.beige,
+            surfaceTintColor: Colors.transparent,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Row(
+              children: [
+                Icon(offer == null ? Icons.add_circle : Icons.edit,
+                    color: AppColors.primary),
+                const SizedBox(width: 12),
+                Text(
+                  offer == null ? 'Opret Tilbud' : 'Rediger Tilbud',
+                  style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.bold, fontSize: 22),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (imageController.text.isNotEmpty) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 120,
+                        width: double.infinity,
+                        color: Colors.white,
+                        child: CachedNetworkImage(
+                          imageUrl: imageController.text,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) => const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image,
+                                  color: Colors.grey, size: 40),
+                              Text('Ugyldig billed-URL',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  );
-                },
-                child: Text(imageController.text.isEmpty ? 'Vælg billede' : 'Billede valgt', selectionColor: Colors.white,),
+                    const SizedBox(height: 16),
+                  ],
+                  _buildOfferDialogField(
+                    controller: nameController,
+                    label: 'Overskrift',
+                    hint: 'F.eks. Besøg en lokal skole',
+                    icon: Icons.title,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildOfferDialogField(
+                    controller: teaserController,
+                    label: 'Teaser',
+                    hint: 'En kort fængende tekst',
+                    icon: Icons.short_text,
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text('Billede',
+                        style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: Colors.black87)),
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildOfferDialogField(
+                          controller: imageController,
+                          label: '', // Label handled by outer Text
+                          hint: 'Link til billede',
+                          icon: Icons.image_outlined,
+                          onChanged: (val) => setDialogState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.navActive,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => UnsplashImagePicker(
+                                onImageSelected: (url) {
+                                  setDialogState(
+                                      () => imageController.text = url);
+                                },
+                              ),
+                            );
+                          },
+                          child: const Icon(Icons.search),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildOfferDialogField(
+                    controller: detailsController,
+                    label: 'Detaljer',
+                    hint: 'Uddyb beskrivelsen her...',
+                    icon: Icons.notes,
+                    maxLines: 4,
+                  ),
+                ],
               ),
-              TextField(controller: detailsController, decoration: const InputDecoration(labelText: 'Details'), maxLines: null),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Annuller',
+                    style: GoogleFonts.kanit(color: Colors.grey[600])),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: () {
+                  if (nameController.text.isEmpty) return;
+
+                  final newOffer = BureauOffer(
+                    offerName: nameController.text,
+                    teaser: teaserController.text,
+                    imageURL: imageController.text,
+                    description: detailsController.text,
+                  );
+                  setState(() {
+                    if (offer != null && index != null) {
+                      offers[index] = newOffer;
+                    } else {
+                      offers.add(newOffer);
+                    }
+                  });
+                  Navigator.pop(context);
+                },
+                child: Text(offer == null ? 'Opret' : 'Gem',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+              )
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              final newOffer = BureauOffer(
-                offerName: nameController.text,
-                teaser: teaserController.text,
-                imageURL: imageController.text,
-                description: detailsController.text,
-              );
-              setState(() {
-                if (offer != null && index != null) {
-                  offers[index] = newOffer;
-                } else {
-                  offers.add(newOffer);
-                }
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildOfferDialogField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    Function(String)? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (label.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 4),
+            child: Text(label,
+                style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.black87)),
+          ),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20, color: AppColors.primary),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[350]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primary, width: 2),
+            ),
+          ),
+          style: GoogleFonts.kanit(fontSize: 15),
+        ),
+      ],
     );
   }
 
@@ -294,46 +514,152 @@ class _TimelineDialogState extends State<TimelineDialog> {
 
   Future<void> _pickAndUploadImage() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-      );
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
-      if (result != null) {
-        PlatformFile file = result.files.single;
-        // Sanitize filename to remove spaces and special characters that might cause URL issues
-        String fileName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        String uniqueFileName = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
-        // Use agencyCode instead of groupId for shared image storage
-        String agencyCode = widget.groupInformation.agencyCode;
-        Reference storageRef = FirebaseStorage.instance.ref('agencies/$agencyCode/timeline_images/$uniqueFileName');
+      if (image != null) {
+        final CroppedFile? croppedFile = await ImageCropper().cropImage(
+          sourcePath: image.path,
+          aspectRatio: const CropAspectRatio(ratioX: 2.5, ratioY: 1),
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Beskær billede',
+              toolbarColor: AppColors.primary,
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.ratio4x3,
+              lockAspectRatio: true,
+            ),
+            IOSUiSettings(
+              title: 'Beskær billede',
+              aspectRatioLockEnabled: true,
+            ),
+            WebUiSettings(
+              context: context,
+              presentStyle: WebPresentStyle.dialog,
+              size: const CropperSize(
+                width: 520,
+                height: 520,
+              ),
+              customDialogBuilder: (cropper, init, crop, rotate, scale) {
+                return StatefulBuilder(builder: (context, setState) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    init();
+                  });
 
-        // Set content type metadata to ensure correct handling by image loaders
-        String? mimeType;
-        if (fileName.toLowerCase().endsWith('.png')) mimeType = 'image/png';
-        else if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg')) mimeType = 'image/jpeg';
-        SettableMetadata metadata = SettableMetadata(contentType: mimeType);
+                  return Dialog(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Beskær & Zoom',
+                                  style: GoogleFonts.kanit(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold)),
+                              IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => Navigator.of(context).pop()),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: 500,
+                            height: 350,
+                            child: ClipRect(child: cropper),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.zoom_out,
+                                  size: 20, color: Colors.grey),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                child: Text('Zoom ud/ind herover',
+                                    style: GoogleFonts.kanit(
+                                        color: Colors.grey, fontSize: 13)),
+                              ),
+                              const Icon(Icons.zoom_in,
+                                  size: 20, color: Colors.grey),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: Text('Annuller',
+                                      style: GoogleFonts.kanit(
+                                          color: Colors.red))),
+                              const SizedBox(width: 10),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  final result = await crop();
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop(result);
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary),
+                                child: Text('Beskær',
+                                    style:
+                                        GoogleFonts.kanit(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                });
+              },
+            ),
+          ],
+        );
 
-        UploadTask uploadTask;
-        if (kIsWeb) {
-          uploadTask = storageRef.putData(file.bytes!, metadata);
-        } else {
-          uploadTask = storageRef.putFile(File(file.path!), metadata);
+        if (croppedFile != null) {
+          String fileName =
+              image.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+          String uniqueFileName =
+              '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+          String agencyCode = widget.groupInformation.agencyCode;
+          Reference storageRef = FirebaseStorage.instance
+              .ref('agencies/$agencyCode/timeline_images/$uniqueFileName');
+
+          final bytes = await croppedFile.readAsBytes();
+
+          String? mimeType;
+          if (fileName.toLowerCase().endsWith('.png'))
+            mimeType = 'image/png';
+          else if (fileName.toLowerCase().endsWith('.jpg') ||
+              fileName.toLowerCase().endsWith('.jpeg')) mimeType = 'image/jpeg';
+
+          SettableMetadata metadata =
+              SettableMetadata(contentType: mimeType ?? 'image/jpeg');
+
+          await storageRef.putData(bytes, metadata);
+
+          String downloadUrl = await storageRef.getDownloadURL();
+          _sessionUploadedImages.add(downloadUrl);
+          setState(() {
+            imageUrlController.text = downloadUrl;
+          });
         }
-
-        await uploadTask;
-
-        String downloadUrl = await storageRef.getDownloadURL();
-        _sessionUploadedImages.add(downloadUrl);
-        setState(() {
-          imageUrlController.text = downloadUrl;
-        });
       }
     } catch (e) {
       print('Fejl ved upload af billede: $e');
       if (mounted) {
         String errorMessage = 'Fejl ved upload: $e';
         if (e.toString().contains('unauthorized')) {
-          errorMessage = 'Manglende rettigheder (Unauthorized). Kontakt en administrator.';
+          errorMessage =
+              'Manglende rettigheder (Unauthorized). Kontakt en administrator.';
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage)),
@@ -376,18 +702,27 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     child: Stack(
                       children: [
                         CachedNetworkImage(
-                          imageUrl: imageUrlController.text.trim().replaceAll(' ', '%20').replaceAll(RegExp(r'[\r\n]'), ''),
+                          imageUrl: imageUrlController.text
+                              .trim()
+                              .replaceAll(' ', '%20')
+                              .replaceAll(RegExp(r'[\r\n]'), ''),
                           height: 180,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) => const Center(child: Icon(Icons.broken_image, size: 50, color: Colors.grey)),
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) => const Center(
+                              child: Icon(Icons.broken_image,
+                                  size: 50, color: Colors.grey)),
                         ),
                         Container(
                           height: 180,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [Colors.black.withOpacity(0.25), Colors.transparent],
+                              colors: [
+                                Colors.black.withValues(alpha: 0.25),
+                                Colors.transparent
+                              ],
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                             ),
@@ -399,7 +734,44 @@ class _TimelineDialogState extends State<TimelineDialog> {
                 const SizedBox(height: 16),
                 _buildTextField(typeController, 'Titel'),
                 _buildTextField(countryController, 'Land, By eller Område'),
-                _buildTextField(descriptionController, 'Beskrivelse', maxLines: 3),
+                _buildTextField(descriptionController, 'Beskrivelse',
+                    maxLines: 3),
+                const SizedBox(height: 16),
+                _buildOptionalDetailField(
+                  controller: accommodationController,
+                  label: 'Overnatning',
+                  buttonText: 'Tilføj Overnatning',
+                  isVisible: _showAccommodationField,
+                  onToggle: () => setState(
+                      () => _showAccommodationField = !_showAccommodationField),
+                ),
+                _buildOptionalDetailField(
+                  controller: transportController,
+                  label: 'Transport',
+                  buttonText: 'Tilføj Transport',
+                  isVisible: _showTransportField,
+                  extraContent: _buildTransportIconSelector(),
+                  onToggle: () => setState(() {
+                    _showTransportField = !_showTransportField;
+                    if (!_showTransportField) selectedTransportIcon = null;
+                  }),
+                ),
+                _buildOptionalDetailField(
+                  controller: mealsController,
+                  label: 'Måltider',
+                  buttonText: 'Tilføj Måltider',
+                  isVisible: _showMealsField,
+                  onToggle: () =>
+                      setState(() => _showMealsField = !_showMealsField),
+                ),
+                _buildOptionalDetailField(
+                  controller: activitiesController,
+                  label: 'Aktiviteter',
+                  buttonText: 'Tilføj Aktiviteter',
+                  isVisible: _showActivitiesField,
+                  onToggle: () => setState(
+                      () => _showActivitiesField = !_showActivitiesField),
+                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6.0),
                   child: ElevatedButton(
@@ -408,7 +780,8 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       elevation: 5,
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () {
                       showModalBottomSheet(
@@ -426,10 +799,31 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                       context: context,
                                       builder: (context) => UnsplashImagePicker(
                                         onImageSelected: (url) {
-                                          setState(() => imageUrlController.text = url);
+                                          setState(() =>
+                                              imageUrlController.text = url);
                                         },
                                       ),
                                     );
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.folder_special),
+                                  title: const Text('Vælg fra fotobibliotek'),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    final selectedUrl =
+                                        await showDialog<String>(
+                                      context: context,
+                                      builder: (context) =>
+                                          _AgencyImagePickerDialog(
+                                        agencyCode:
+                                            widget.groupInformation.agencyCode,
+                                      ),
+                                    );
+                                    if (selectedUrl != null) {
+                                      setState(() => imageUrlController.text =
+                                          selectedUrl);
+                                    }
                                   },
                                 ),
                                 ListTile(
@@ -446,23 +840,32 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         },
                       );
                     },
-                    child: Text(imageUrlController.text.isEmpty ? 'Vælg billede' : 'Vælg nyt billede', style: const TextStyle(fontSize: 16)),
+                    child: Text(
+                        imageUrlController.text.isEmpty
+                            ? 'Vælg billede'
+                            : 'Vælg nyt billede',
+                        style: const TextStyle(fontSize: 16)),
                   ),
                 ),
-                _buildTextField(dayNumberController, 'Dag (Fx. Dag 4)', keyboardType: TextInputType.number),
                 Row(
                   children: [
                     Expanded(
                       child: GestureDetector(
                         onTap: _pickStartDate,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-                          margin: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
-                          decoration: BoxDecoration(color: AppColors.chipBackground, borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 12),
+                          margin: const EdgeInsets.only(
+                              right: 8, top: 8, bottom: 8),
+                          decoration: BoxDecoration(
+                              color: AppColors.chipBackground,
+                              borderRadius: BorderRadius.circular(12)),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Startdato', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const Text('Startdato',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               Text(DateFormat('dd/MM/yyyy').format(startDate)),
                             ],
                           ),
@@ -473,13 +876,19 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       child: GestureDetector(
                         onTap: _pickEndDate,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-                          margin: const EdgeInsets.only(left: 8, top: 8, bottom: 8),
-                          decoration: BoxDecoration(color: AppColors.chipBackground, borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 12),
+                          margin:
+                              const EdgeInsets.only(left: 8, top: 8, bottom: 8),
+                          decoration: BoxDecoration(
+                              color: AppColors.chipBackground,
+                              borderRadius: BorderRadius.circular(12)),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Slutdato', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const Text('Slutdato',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               Text(DateFormat('dd/MM/yyyy').format(endDate)),
                             ],
                           ),
@@ -489,21 +898,32 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                   margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(color: AppColors.chipBackground, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(
+                      color: AppColors.chipBackground,
+                      borderRadius: BorderRadius.circular(12)),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tilbud fra rejsebureauet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const Text('Tilbud fra rejsebureauet',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 16),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: () => _addOrEditOffer(),
-                        child: const Text('Opret tilbud', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w300, color: Colors.white)),
+                        child: const Text('Opret tilbud',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white)),
                       ),
                     ],
                   ),
@@ -512,19 +932,104 @@ class _TimelineDialogState extends State<TimelineDialog> {
                 ...offers.asMap().entries.map((entry) {
                   int idx = entry.key;
                   BureauOffer offer = entry.value;
-                  return Card(
-                    color: AppColors.chipBackground,
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  return Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
                     child: ListTile(
-                      title: Text(offer.offerName.isNotEmpty ? offer.offerName : 'Unnamed Offer'),
-                      subtitle: Text(offer.teaser),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit), onPressed: () => _addOrEditOffer(offer: offer, index: idx)),
-                          IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteOffer(idx)),
-                        ],
+                      contentPadding: const EdgeInsets.all(12),
+                      leading: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: AppColors.beige,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: offer.imageURL.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: offer.imageURL,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (context, url, error) => Icon(
+                                      Icons.local_offer,
+                                      color: AppColors.primary),
+                                )
+                              : Icon(Icons.local_offer,
+                                  color: AppColors.primary),
+                        ),
+                      ),
+                      title: Text(
+                        offer.offerName.isNotEmpty
+                            ? offer.offerName
+                            : 'Unavngivet tilbud',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          offer.teaser,
+                          style: GoogleFonts.kanit(
+                            fontSize: 14,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                      trailing: Container(
+                        decoration: const BoxDecoration(
+                          color: AppColors.beige,
+                          shape: BoxShape.circle,
+                        ),
+                        child: PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert,
+                              color: Colors.black54),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _addOrEditOffer(offer: offer, index: idx);
+                            } else if (value == 'delete') {
+                              _deleteOffer(idx);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit,
+                                      size: 20, color: AppColors.primary),
+                                  const SizedBox(width: 12),
+                                  Text('Rediger', style: GoogleFonts.kanit()),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.delete,
+                                      size: 20, color: Colors.redAccent),
+                                  const SizedBox(width: 12),
+                                  Text('Slet', style: GoogleFonts.kanit()),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -535,7 +1040,8 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     if (isEditing)
                       TextButton(
                         onPressed: _showDeleteConfirmationDialog,
-                        child: const Text('Slet begivenhed', style: TextStyle(color: Colors.red, fontSize: 16)),
+                        child: const Text('Slet begivenhed',
+                            style: TextStyle(color: Colors.red, fontSize: 16)),
                       ),
                     const Spacer(),
                     Expanded(
@@ -544,10 +1050,16 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _saveChanges,
-                        child: Text(isEditing ? 'Gem ændringer' : 'Opret begivenhed', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w300, color: Colors.white)),
+                        child: Text(
+                            isEditing ? 'Gem ændringer' : 'Opret begivenhed',
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white)),
                       ),
                     ),
                   ],
@@ -560,7 +1072,108 @@ class _TimelineDialogState extends State<TimelineDialog> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, {int maxLines = 1, TextInputType? keyboardType}) {
+  Widget _buildTransportIconSelector() {
+    final icons = {
+      'car': Icons.directions_car,
+      'bus': Icons.directions_bus,
+      'train': Icons.train,
+      'flight': Icons.flight,
+      'ferry': Icons.directions_boat,
+      'walk': Icons.directions_walk,
+      'motorcycle': Icons.motorcycle_outlined,
+    };
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: icons.entries.map((entry) {
+        final isSelected = selectedTransportIcon == entry.key;
+        return InkWell(
+          onTap: () => setState(() => selectedTransportIcon = entry.key),
+          borderRadius: BorderRadius.circular(30),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.primary : Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: isSelected ? AppColors.primary : Colors.grey.shade400),
+            ),
+            child: Icon(
+              entry.value,
+              color: isSelected ? Colors.white : Colors.grey.shade600,
+              size: 20,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildOptionalDetailField({
+    required TextEditingController controller,
+    required String label,
+    required String buttonText,
+    required bool isVisible,
+    required VoidCallback onToggle,
+    Widget? extraContent,
+  }) {
+    if (isVisible) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
+        child: Column(
+          children: [
+            if (extraContent != null) ...[
+              extraContent,
+              const SizedBox(height: 8)
+            ],
+            TextField(
+              controller: controller,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              decoration: InputDecoration(
+                labelText: label,
+                filled: true,
+                fillColor: AppColors.homeGradientStart,
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    controller.clear();
+                    onToggle();
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        child: OutlinedButton(
+          onPressed: onToggle,
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: Colors.grey.shade400),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.add, color: Colors.black54),
+              const SizedBox(width: 8),
+              Text(buttonText,
+                  style: const TextStyle(color: Colors.black87, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildTextField(TextEditingController controller, String label,
+      {int maxLines = 1, TextInputType? keyboardType}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: TextField(
@@ -572,6 +1185,226 @@ class _TimelineDialogState extends State<TimelineDialog> {
           filled: true,
           fillColor: AppColors.homeGradientStart,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgencyImagePickerDialog extends StatefulWidget {
+  final String agencyCode;
+
+  const _AgencyImagePickerDialog({required this.agencyCode});
+
+  @override
+  State<_AgencyImagePickerDialog> createState() =>
+      _AgencyImagePickerDialogState();
+}
+
+class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
+  String _currentPath = '';
+  List<Reference> _folders = [];
+  List<Reference> _images = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImages();
+  }
+
+  String get _storageBasePath {
+    if (_currentPath.isEmpty) {
+      return 'agencies/${widget.agencyCode}/timeline_images';
+    } else {
+      return 'agencies/${widget.agencyCode}/timeline_images/$_currentPath';
+    }
+  }
+
+  Future<void> _loadImages() async {
+    try {
+      final result =
+          await FirebaseStorage.instance.ref(_storageBasePath).listAll();
+
+      if (mounted) {
+        setState(() {
+          _folders = result.prefixes;
+          _images = result.items.where((ref) => ref.name != '.keep').toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.panelBackground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+          maxWidth: 600,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Row(children: [
+                if (_currentPath.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () {
+                      setState(() {
+                        _currentPath = '';
+                        _isLoading = true;
+                      });
+                      _loadImages();
+                    },
+                  ),
+                Expanded(
+                  child: Text(
+                    _currentPath.isEmpty ? 'Vælg fra billedbank' : _currentPath,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 20),
+              Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : (_folders.isEmpty && _images.isEmpty)
+                          ? const Center(child: Text('Ingen billeder fundet'))
+                          : CustomScrollView(slivers: [
+                              if (_folders.isNotEmpty)
+                                SliverGrid(
+                                    gridDelegate:
+                                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                                      maxCrossAxisExtent: 150,
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                      mainAxisExtent: 50,
+                                    ),
+                                    delegate: SliverChildBuilderDelegate(
+                                        (context, index) {
+                                      final folder = _folders[index];
+                                      return InkWell(
+                                          onTap: () {
+                                            setState(() {
+                                              _currentPath = folder.name;
+                                              _isLoading = true;
+                                            });
+                                            _loadImages();
+                                          },
+                                          child: Container(
+                                              decoration: BoxDecoration(
+                                                  color: AppColors.primary
+                                                      .withOpacity(0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                      color: AppColors.primary
+                                                          .withOpacity(0.3))),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8),
+                                              child: Row(children: [
+                                                Icon(Icons.folder,
+                                                    color: AppColors.primary,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                    child: Text(folder.name,
+                                                        overflow: TextOverflow
+                                                            .ellipsis)),
+                                              ])));
+                                    }, childCount: _folders.length)),
+                              if (_folders.isNotEmpty && _images.isNotEmpty)
+                                const SliverToBoxAdapter(
+                                    child: SizedBox(height: 20)),
+                              if (_images.isNotEmpty)
+                                SliverGrid(
+                                    gridDelegate:
+                                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                                      maxCrossAxisExtent: 150,
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                    ),
+                                    delegate: SliverChildBuilderDelegate(
+                                        (context, index) {
+                                      final ref = _images[index];
+                                      return FutureBuilder<String>(
+                                        future: ref.getDownloadURL(),
+                                        builder: (context, snapshot) {
+                                          if (!snapshot.hasData) {
+                                            return Container(
+                                              color: Colors.grey[200],
+                                              child: const Center(
+                                                  child:
+                                                      CircularProgressIndicator()),
+                                            );
+                                          }
+                                          return InkWell(
+                                            onTap: () => Navigator.pop(
+                                                context, snapshot.data),
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: Stack(
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  CachedNetworkImage(
+                                                    imageUrl: snapshot.data!,
+                                                    fit: BoxFit.cover,
+                                                    placeholder:
+                                                        (context, url) =>
+                                                            Container(
+                                                                color: Colors
+                                                                    .grey[200]),
+                                                    errorWidget: (context, url,
+                                                            error) =>
+                                                        const Icon(Icons.error),
+                                                  ),
+                                                  Positioned(
+                                                    bottom: 0,
+                                                    left: 0,
+                                                    right: 0,
+                                                    child: Container(
+                                                      color: Colors.black54,
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              2),
+                                                      child: Text(
+                                                        ref.name,
+                                                        style: const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 10),
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    }, childCount: _images.length)),
+                            ])),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuller'),
+              ),
+            ],
+          ),
         ),
       ),
     );

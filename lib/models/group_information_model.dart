@@ -28,8 +28,11 @@ class GroupInformation extends Equatable {
   final bool flightHome;
   final bool flightAway;
   final List<Message>? messages;
+  String? groupName;
+  bool? isTemplate;
 
-  const GroupInformation({
+
+  GroupInformation({
     required this.groupId,
     required this.id,
     required this.departureDate,
@@ -48,6 +51,8 @@ class GroupInformation extends Equatable {
     this.coupons,
     this.flights,
     this.messages,
+    this.groupName,
+    this.isTemplate
   });
 
   factory GroupInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -93,6 +98,8 @@ class GroupInformation extends Equatable {
               .map((message) => Message.fromSnapshot(message))
               .toList()
           : null,
+      groupName: data['groupName'],
+      isTemplate: data['isTemplate']
     );
   }
 

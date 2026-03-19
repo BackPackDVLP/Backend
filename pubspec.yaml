@@ -71,6 +71,9 @@ dependencies:
   firebase_functions: ^0.0.1-dev
   cloud_functions: ^5.6.2
   flutter_colorpicker: ^1.1.0
+  image_cropper: ^11.0.0
+  image_picker: ^1.2.1
+  crop_your_image: ^2.0.0
 
 dev_dependencies:
   flutter_test:

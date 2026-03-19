@@ -53,7 +53,7 @@ class DepartureBox2 extends StatelessWidget {
                               fontSize: 20, fontWeight: FontWeight.w300))
                     else if (information.departureDate.isBefore(DateTime.now()))
                       Text(
-                          'Du har rejst i ${(DateTime.now().difference(information.departureDate).inDays + 1).abs().toString()} dage',
+                          'Gruppen har rejst i ${(DateTime.now().difference(information.departureDate).inDays + 1).abs().toString()} dage',
                           style: GoogleFonts.kanit(
                             fontSize: 20,
                             fontWeight: FontWeight.w300,
@@ -75,7 +75,7 @@ class DepartureBox2 extends StatelessWidget {
                       Text(
                           information.flightAway == false
                               ? 'Rejsen starter i ${information.departureFrom}'
-                              : 'Du rejser fra ${information.departureFrom}',
+                              : 'Gruppen rejser fra ${information.departureFrom}',
                           style: GoogleFonts.kanit(
                               fontSize: 14, fontWeight: FontWeight.w200)),
                   ],
@@ -84,37 +84,7 @@ class DepartureBox2 extends StatelessWidget {
             ),
           ),
           
-          if ((information.departureDate.isBefore(DateTime.now()))&&(information.returnDate.isAfter(DateTime.now()))) Positioned(
-            right: 0,
-            bottom: 0,
-            child: SizedBox(
-              width: 60,
-              height: 60,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Your logic here
-                },
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  backgroundColor: const Color.fromARGB(127, 239, 224, 213),
-                  elevation: 5,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(100),
-                        bottomRight: Radius.circular(10)),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 12.0, top: 12),
-                  child: const Icon(
-                    Icons.swipe_down_outlined,
-                    color: Color.fromARGB(197, 0, 0, 0),
-                    size: 30,
-                  ),
-                ),
-              ),
-            ),
-          ),
+         
         
         ],
       ),

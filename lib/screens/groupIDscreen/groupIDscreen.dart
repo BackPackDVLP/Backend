@@ -27,7 +27,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
   final _agencyCodeController = TextEditingController();
 
   @override
-void initState() {
+  void initState() {
     super.initState();
     _handleInitialAuthCheck();
   }
@@ -64,6 +64,26 @@ void initState() {
     });
   }
 
+  Future<void> _handleLogout() async {
+    // Reset the GroupInformationBloc to its initial state
+    context.read<GroupInformationBloc>().add(LogoutEvent());
+
+    // Clear saved preferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('groupId');
+    await prefs.remove('lastEnteredAgencyCode');
+
+    // Sign out from Firebase
+    await FirebaseAuth.instance.signOut();
+
+    // Add a small delay to ensure the BLoC state is reset before the new screen builds.
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    // Navigate to login screen and remove all previous routes
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
 
   @override
   void dispose() {
@@ -79,6 +99,18 @@ void initState() {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _handleLogout,
+            tooltip: 'Log ud',
+          ),
+        ],
+      ),
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
@@ -92,25 +124,41 @@ void initState() {
               // Navigate directly to the RootScreen
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(
-                    builder: (context) => const RootScreen()),
+                MaterialPageRoute(builder: (context) => const RootScreen()),
                 (route) => false,
               );
             } else if (state is GroupsByAgencyLoaded) {
-              await _saveLastEnteredAgencyCode(_agencyCodeController.text); // Save the agency code
+              await _saveLastEnteredAgencyCode(
+                  _agencyCodeController.text); // Save the agency code
               Navigator.push(
                 context,
-                GroupSelectionScreen.route(groups: state.groups),
+                GroupSelectionScreen.route(
+                  groups: state.groups,
+                  agencyCode: _agencyCodeController.text,
+                ),
               );
             } else if (state is GroupInformationError) {
-              // Failsafe: Clear saved groupId to prevent infinite reload loops if group is deleted
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('groupId');
+              // This is a workaround. Ideally, the BLoC should emit GroupsByAgencyLoaded with an empty list.
+              // But if it emits an error for "not found", we handle it here to proceed to the selection screen.
+              if (state.message.toLowerCase().contains('no groups found')) {
+                await _saveLastEnteredAgencyCode(_agencyCodeController.text);
+                Navigator.push(
+                  context,
+                  GroupSelectionScreen.route(
+                    groups: [], // Pass an empty list of groups
+                    agencyCode: _agencyCodeController.text,
+                  ),
+                );
+              } else {
+                // Handle other, actual errors
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('groupId');
 
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.message)),
-              );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(state.message)),
+                );
+              }
             }
           },
           child: Center(
@@ -157,8 +205,7 @@ void initState() {
                               return Align(
                                 alignment: Alignment.centerLeft,
                                 child: Padding(
-                                  padding:
-                                      const EdgeInsets.only(bottom: 20.0),
+                                  padding: const EdgeInsets.only(bottom: 20.0),
                                   child: Text.rich(
                                     TextSpan(
                                       children: [
@@ -233,7 +280,8 @@ void initState() {
                           },
                           child: const Text('Jeg er klar!',
                               style: TextStyle(
-                                  fontWeight: FontWeight.bold, color: Colors.black)),
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black)),
                         ),
                         const SizedBox(height: 50),
                       ],

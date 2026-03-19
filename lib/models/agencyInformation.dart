@@ -9,6 +9,7 @@ class AgencyInformation extends Equatable {
   final String mainColor;
   final int maxEmails;
   final String returnMail;
+  final String? videoUrl;
 
   const AgencyInformation({
     required this.agencyCode,
@@ -18,6 +19,7 @@ class AgencyInformation extends Equatable {
     required this.mainColor,
     required this.maxEmails,
     required this.returnMail,
+    this.videoUrl,
   });
 
   factory AgencyInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -30,6 +32,7 @@ class AgencyInformation extends Equatable {
       mainColor: data['mainColor'] ?? '#000000',
       maxEmails: data['maxEmails'] ?? 0,
       returnMail: data['returnMail'] ?? '',
+      videoUrl: data['videoUrl'] as String?,
     );
   }
 
@@ -42,5 +45,6 @@ class AgencyInformation extends Equatable {
         mainColor,
         maxEmails,
         returnMail,
+        videoUrl,
       ];
 }

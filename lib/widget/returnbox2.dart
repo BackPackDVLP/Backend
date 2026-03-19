@@ -18,7 +18,7 @@ class ReturnBox2 extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (information.returnDate.isBefore(DateTime.now()))
-                Text('Din rejse er slut',
+                Text('Gruppens rejse er slut',
                     style: GoogleFonts.kanit(
                         fontSize: 20, fontWeight: FontWeight.w500))
               else
@@ -29,7 +29,7 @@ class ReturnBox2 extends StatelessWidget {
               Text(
                   information.flightHome == false
                       ? 'Rejsen slutter i ${information.returnTo}'
-                      : 'Du lander i ${information.returnTo}',
+                      : 'Gruppen lander i ${information.returnTo}',
                   style: GoogleFonts.kanit(
                       fontSize: 14, fontWeight: FontWeight.w200)),
             ],

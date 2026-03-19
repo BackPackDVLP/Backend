@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:backend/config/app_colors.dart';
 import 'package:intl/intl.dart';
 import 'package:backend/models/group_information_model.dart';
@@ -43,7 +44,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Future<void> _loadGroup() async {
     // Use .first to treat the stream like a future for a one-time load.
     // This prevents setState calls after the widget is disposed if the user navigates away.
-    final group = await widget.repository.getGroupInformation(widget.groupId).first;
+    final group =
+        await widget.repository.getGroupInformation(widget.groupId).first;
     if (!mounted) return;
 
     setState(() {
@@ -99,11 +101,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       // Optionally, reload the main group info in the BLoC
       // context.read<GroupInformationBloc>().add(LoadGroupInformationById(groupId: _group!.groupId));
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Details saved')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Details saved')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving details: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error saving details: $e')));
+      }
     }
   }
 
@@ -118,90 +124,198 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         TextEditingController(text: existingCoupon?.link ?? '');
 
     showDialog(
-      
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(existingCoupon == null ? 'Add Coupon' : 'Edit Coupon'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Coupon Name'),
-                validator: (v) => v!.isEmpty ? 'Required' : null,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.beige,
+            surfaceTintColor: Colors.transparent,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Row(
+              children: [
+                Icon(existingCoupon == null ? Icons.add_circle : Icons.edit,
+                    color: AppColors.primary),
+                const SizedBox(width: 12),
+                Text(
+                  existingCoupon == null ? 'Tilføj Kupon' : 'Rediger Kupon',
+                  style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.bold, fontSize: 22),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (imageUrlController.text.isNotEmpty) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 120,
+                        width: double.infinity,
+                        color: Colors.white,
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrlController.text,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) => const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image,
+                                  color: Colors.grey, size: 40),
+                              Text('Ugyldig billed-URL',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  _buildDialogField(
+                    controller: nameController,
+                    label: 'Navn',
+                    hint: 'F.eks. 20% rabat på Safari',
+                    icon: Icons.label_outline,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDialogField(
+                    controller: descriptionController,
+                    label: 'Beskrivelse',
+                    hint: 'F.eks. Gælder alle bookinger i 2024',
+                    icon: Icons.description_outlined,
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDialogField(
+                    controller: imageUrlController,
+                    label: 'Billed-URL',
+                    hint: 'Link til logo eller billede',
+                    icon: Icons.image_outlined,
+                    onChanged: (val) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDialogField(
+                    controller: linkController,
+                    label: 'Link',
+                    hint: 'Hvor skal kuponen føre hen?',
+                    icon: Icons.link,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: descriptionController,
-                decoration: const InputDecoration(labelText: 'Description'),
-                validator: (v) => v!.isEmpty ? 'Required' : null,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Annuller',
+                    style: GoogleFonts.kanit(color: Colors.grey[600])),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: imageUrlController,
-                decoration: const InputDecoration(labelText: 'Image URL'),
-                validator: (v) {
-                  if (v!.isNotEmpty && !Uri.tryParse(v)!.isAbsolute) {
-                    return 'Enter a valid URL';
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: () async {
+                  if (nameController.text.isEmpty) return;
+
+                  final newCoupon = Coupon(
+                    couponName: nameController.text,
+                    description: descriptionController.text,
+                    imageURL: imageUrlController.text,
+                    link: linkController.text,
+                  );
+
+                  final groupRef = widget.repository.firestore
+                      .collection('groups')
+                      .doc(_group!.groupId);
+
+                  List<Coupon> updatedCoupons =
+                      List.from(_group!.coupons ?? []);
+
+                  if (existingCoupon != null) {
+                    updatedCoupons.removeWhere(
+                        (c) => c.couponName == existingCoupon.couponName);
                   }
-                  return null;
+
+                  updatedCoupons.add(newCoupon);
+
+                  await groupRef.update({
+                    'coupons': updatedCoupons
+                        .map((c) => {
+                              'couponName': c.couponName,
+                              'description': c.description,
+                              'imageURL': c.imageURL,
+                              'link': c.link,
+                            })
+                        .toList(),
+                  });
+
+                  if (context.mounted) Navigator.pop(context);
                 },
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: linkController,
-                decoration: const InputDecoration(labelText: 'Link'),
-              ),
+                child: Text(existingCoupon == null ? 'Tilføj' : 'Gem',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+              )
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (_group == null) return;
-
-              final newCoupon = Coupon(
-                couponName: nameController.text,
-                description: descriptionController.text,
-                imageURL: imageUrlController.text,
-                link: linkController.text,
-              );
-
-              final groupRef = widget.repository.firestore
-                  .collection('groups')
-                  .doc(_group!.groupId);
-
-              List<Coupon> updatedCoupons = List.from(_group!.coupons ?? []);
-
-              if (existingCoupon != null) {
-                updatedCoupons.removeWhere(
-                    (c) => c.couponName == existingCoupon.couponName);
-              }
-
-              updatedCoupons.add(newCoupon);
-
-              await groupRef.update({
-                'coupons': updatedCoupons
-                    .map((c) => {
-                          'couponName': c.couponName,
-                          'description': c.description,
-                          'imageURL': c.imageURL,
-                          'link': c.link,
-                        })
-                    .toList(),
-              });
-
-              Navigator.pop(context);
-            },
-            child: Text(existingCoupon == null ? 'Add' : 'Save'),
-          )
-        ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildDialogField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    Function(String)? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: Text(label,
+              style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Colors.black87)),
+        ),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20, color: AppColors.primary),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[350]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primary, width: 2),
+            ),
+          ),
+          style: GoogleFonts.kanit(fontSize: 15),
+        ),
+      ],
     );
   }
 
@@ -239,7 +353,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            title: Text('Rejsedetaljer', style: GoogleFonts.kanit(fontWeight: FontWeight.bold, color: AppColors.homeGradientStart)),
+            title: Text('Rejsedetaljer',
+                style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.homeGradientStart)),
             backgroundColor: AppColors.navActive,
             iconTheme: const IconThemeData(color: AppColors.homeGradientStart),
             pinned: true,
@@ -259,11 +376,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       children: [
                         _buildDateRow(),
                         const SizedBox(height: 16),
-                        _buildTextFormField(_departureFromController, 'Afrejse fra / Rejsen starter i', Icons.location_on_outlined),
+                        _buildTextFormField(
+                            _departureFromController,
+                            'Afrejse fra / Rejsen starter i',
+                            Icons.location_on_outlined),
                         const SizedBox(height: 16),
-                        _buildTextFormField(_returnToController, 'Hjemkomst til / Rejsen slutter i', Icons.location_on),
+                        _buildTextFormField(
+                            _returnToController,
+                            'Hjemkomst til / Rejsen slutter i',
+                            Icons.location_on),
                         const SizedBox(height: 16),
-                        _buildTextFormField(_emergencyPhoneController, 'Nødtelefon', Icons.phone, keyboardType: TextInputType.phone, isRequired: false),
+                        _buildTextFormField(_emergencyPhoneController,
+                            'Nødtelefon', Icons.phone,
+                            keyboardType: TextInputType.phone,
+                            isRequired: false),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -272,16 +398,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       icon: Icons.flight,
                       children: [
                         SwitchListTile(
-                          title: Text('Afrejse: ${_flightAway ? "Inkluderet" : "Ikke inkluderet"}', style: GoogleFonts.kanit()),
+                          title: Text(
+                              'Afrejse: ${_flightAway ? "Inkluderet" : "Ikke inkluderet"}',
+                              style: GoogleFonts.kanit()),
                           value: _flightAway,
                           onChanged: (val) => setState(() => _flightAway = val),
-                          activeColor: AppColors.primary,
+                          activeThumbColor: AppColors.primary,
                         ),
                         SwitchListTile(
-                          title: Text('Hjemrejse: ${_flightHome ? "Inkluderet" : "Ikke inkluderet"}', style: GoogleFonts.kanit()),
+                          title: Text(
+                              'Hjemrejse: ${_flightHome ? "Inkluderet" : "Ikke inkluderet"}',
+                              style: GoogleFonts.kanit()),
                           value: _flightHome,
                           onChanged: (val) => setState(() => _flightHome = val),
-                          activeColor: AppColors.primary,
+                          activeThumbColor: AppColors.primary,
                         ),
                       ],
                     ),
@@ -296,9 +426,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       ),
                       children: [
                         if (_group!.coupons == null || _group!.coupons!.isEmpty)
-                          const Center(child: Text('Ingen kuponer tilføjet endnu.'))
+                          const Center(
+                              child: Text('Ingen kuponer tilføjet endnu.'))
                         else
-                          ..._group!.coupons!.map((coupon) => _buildCouponTile(coupon)),
+                          ..._group!.coupons!
+                              .map((coupon) => _buildCouponTile(coupon)),
                       ],
                     ),
                   ],
@@ -311,13 +443,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saveGroupDetails,
         backgroundColor: AppColors.primary,
-        label: Text('Gem Ændringer', style: GoogleFonts.kanit(fontWeight: FontWeight.bold, color: Colors.white)),
+        label: Text('Gem Ændringer',
+            style: GoogleFonts.kanit(
+                fontWeight: FontWeight.bold, color: Colors.white)),
         icon: const Icon(Icons.save, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, required List<Widget> children, Widget? action}) {
+  Widget _buildSectionCard(
+      {required String title,
+      required IconData icon,
+      required List<Widget> children,
+      Widget? action}) {
     return Card(
       elevation: 4,
       shadowColor: Colors.black26,
@@ -335,7 +473,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   children: [
                     Icon(icon, color: Colors.black54),
                     const SizedBox(width: 10),
-                    Text(title, style: GoogleFonts.kanit(fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text(title,
+                        style: GoogleFonts.kanit(
+                            fontSize: 20, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 if (action != null) action,
@@ -350,23 +490,105 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   Widget _buildCouponTile(Coupon coupon) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: ListTile(
-        title: Text(coupon.couponName, style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
-        subtitle: Text(coupon.description),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: Icon(Icons.edit, color: AppColors.primary), onPressed: () => _addOrEditCoupon(existingCoupon: coupon)),
-            IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () => _deleteCoupon(coupon)),
-          ],
+        contentPadding: const EdgeInsets.all(12),
+        leading: Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.beige,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: coupon.imageURL.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: coupon.imageURL,
+                    fit: BoxFit.contain,
+                    errorWidget: (context, url, error) =>
+                        Icon(Icons.local_offer, color: AppColors.primary),
+                  )
+                : Icon(Icons.local_offer, color: AppColors.primary),
+          ),
+        ),
+        title: Text(
+          coupon.couponName,
+          style: GoogleFonts.kanit(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            color: Colors.black87,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            coupon.description,
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              color: Colors.black54,
+            ),
+          ),
+        ),
+        trailing: Container(
+          decoration: BoxDecoration(
+            color: AppColors.beige,
+            shape: BoxShape.circle,
+          ),
+          child: PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.black54),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) {
+              if (value == 'edit') {
+                _addOrEditCoupon(existingCoupon: coupon);
+              } else if (value == 'delete') {
+                _deleteCoupon(coupon);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit, size: 20, color: AppColors.primary),
+                    const SizedBox(width: 12),
+                    Text('Rediger', style: GoogleFonts.kanit()),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    const Icon(Icons.delete, size: 20, color: Colors.redAccent),
+                    const SizedBox(width: 12),
+                    Text('Slet', style: GoogleFonts.kanit()),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTextFormField(TextEditingController controller, String label, IconData icon, {TextInputType? keyboardType, bool isRequired = true}) {
+  Widget _buildTextFormField(
+      TextEditingController controller, String label, IconData icon,
+      {TextInputType? keyboardType, bool isRequired = true}) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
@@ -377,7 +599,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         filled: true,
         fillColor: Colors.white,
       ),
-      validator: (value) => isRequired && (value == null || value.isEmpty) ? 'Dette felt er påkrævet' : null,
+      validator: (value) => isRequired && (value == null || value.isEmpty)
+          ? 'Dette felt er påkrævet'
+          : null,
     );
   }
 
@@ -386,16 +610,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       children: [
         Expanded(
           child: InkWell(
-            onTap: () => _pickDate(_departureDateController, _group!.departureDate),
+            onTap: () =>
+                _pickDate(_departureDateController, _group!.departureDate),
             child: InputDecorator(
               decoration: InputDecoration(
                 labelText: 'Afrejsedato',
                 prefixIcon: const Icon(Icons.calendar_today),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
-              child: Text(_departureDateController.text, style: GoogleFonts.kanit()),
+              child: Text(_departureDateController.text,
+                  style: GoogleFonts.kanit()),
             ),
           ),
         ),
@@ -407,11 +634,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               decoration: InputDecoration(
                 labelText: 'Hjemkomstdato',
                 prefixIcon: const Icon(Icons.calendar_today),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
-              child: Text(_returnDateController.text, style: GoogleFonts.kanit()),
+              child:
+                  Text(_returnDateController.text, style: GoogleFonts.kanit()),
             ),
           ),
         ),

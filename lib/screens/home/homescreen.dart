@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 
 import 'package:backend/config/app_colors.dart';
@@ -21,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeline_tile/timeline_tile.dart';
@@ -62,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadGroupIdAndFetchData();
-    
   }
 
   Future<void> _loadGroupIdAndFetchData() async {
@@ -88,7 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       final currentState = context.read<GroupInformationBloc>().state;
-      if (currentState is! GroupInformationLoaded || currentState.groupInformation.groupId != groupId) {
+      if (currentState is! GroupInformationLoaded ||
+          currentState.groupInformation.groupId != groupId) {
         context
             .read<GroupInformationBloc>()
             .add(LoadGroupInformationById(groupId: groupId!));
@@ -104,7 +104,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _updateAgencyColor(String agencyCode) async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('agency').doc(agencyCode).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('agency')
+          .doc(agencyCode)
+          .get();
       if (doc.exists && mounted) {
         final data = doc.data();
         if (data != null && data['mainColor'] != null) {
@@ -139,7 +142,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Online
       try {
         final listResult = await _currentDocsRef!.listAll();
-        final pdfFiles = listResult.items.where((ref) => !ref.name.startsWith('.')).toList();
+        final pdfFiles =
+            listResult.items.where((ref) => !ref.name.startsWith('.')).toList();
         final folders = listResult.prefixes;
 
         final metadataList = await Future.wait(
@@ -205,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
+        withData: true,
       );
 
       if (result != null) {
@@ -216,89 +221,81 @@ class _HomeScreenState extends State<HomeScreen> {
         final confirmed = await showDialog<bool>(
           // Use the captured context
           context: context,
-            builder: (BuildContext context) {
-              return AlertDialog(
-                backgroundColor: AppColors.uploadDialogBackground, // Background color
-                title: Text(
-                  "Upload filer",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              backgroundColor:
+                  AppColors.uploadDialogBackground, // Background color
+              title: Text(
+                "Upload filer",
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.picture_as_pdf, size: 48, color: Colors.red),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Vil du uploade denne fil?",
-                      style: const TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
+                textAlign: TextAlign.center,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.picture_as_pdf, size: 48, color: Colors.red),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Vil du uploade denne fil?",
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    fileName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      fileName,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+              actions: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.uploadDialogButton,
                       ),
-                      textAlign: TextAlign.center,
+                      child: Text(
+                        "Annuller",
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.uploadDialogButton,
+                      ),
+                      child: Text(
+                        "Upload",
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
-                actions: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.uploadDialogButton,
-                        ),
-                        child: Text(
-                          "Annuller",
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.uploadDialogButton,
-                        ),
-                        child: Text(
-                          "Upload",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          );
-        
+              ],
+            );
+          },
+        );
+
         // If user confirms, proceed with upload
         if (confirmed == true) {
           Reference storageRef = _currentDocsRef!.child(fileName);
-          UploadTask uploadTask;
-          if (kIsWeb) {
-            uploadTask = storageRef.putData(fileBytes!);
-          } else {
-            final filePath = result.files.single.path;
-            uploadTask = storageRef.putFile(File(filePath!));
+          if (fileBytes != null) {
+            UploadTask uploadTask = storageRef.putData(fileBytes);
+            await uploadTask;
+            _fetchDocuments(); // Refresh file list
           }
-          await uploadTask;
-
-          String downloadUrl = await storageRef.getDownloadURL();
-          print("File uploaded successfully! URL: $downloadUrl");
-
-          _fetchDocuments(); // Refresh file list
         } else {
           print("Upload canceled.");
         }
-
       } else {
         print("No file selected.");
       }
@@ -313,11 +310,33 @@ class _HomeScreenState extends State<HomeScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Ny mappe'),
-        content: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Mappenavn'),
-          onChanged: (value) => folderName = value,
+        backgroundColor: AppColors.dialogAltBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Opret ny mappe',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.create_new_folder, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'For at oprette en mappe skal du uploade mindst én fil til den.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Mappenavn',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              onChanged: (value) => folderName = value,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -325,25 +344,48 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text('Annuller'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () async {
               if (folderName.trim().isNotEmpty) {
+                Navigator.pop(context);
                 try {
-                  // Create a placeholder file to "create" the folder
-                  await _currentDocsRef!
-                      .child(folderName.trim())
-                      .child('.keep')
-                      .putString('');
-                  if (mounted) Navigator.pop(context);
-                  _fetchDocuments();
+                  FilePickerResult? result =
+                      await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['pdf'],
+                    withData: true,
+                  );
+
+                  if (result != null) {
+                    String fileName = result.files.single.name;
+                    Reference storageRef = _currentDocsRef!
+                        .child(folderName.trim())
+                        .child(fileName);
+
+                    if (result.files.single.bytes != null) {
+                      UploadTask uploadTask =
+                          storageRef.putData(result.files.single.bytes!);
+                      await uploadTask;
+                      _fetchDocuments();
+                    }
+                  }
                 } catch (e) {
                   print('Error creating folder: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Fejl ved oprettelse af mappe: $e')),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text('Fejl ved oprettelse af mappe: $e')),
+                    );
+                  }
                 }
               }
             },
-            child: const Text('Opret'),
+            child: const Text('Vælg fil & opret'),
           ),
         ],
       ),
@@ -373,163 +415,151 @@ class _HomeScreenState extends State<HomeScreen> {
     return BlocListener<GroupInformationBloc, GroupInformationState>(
       listener: (context, state) {
         if (state is GroupInformationLoaded) {
+          groupId = state.groupInformation.groupId;
           _updateAgencyColor(state.groupInformation.agencyCode);
         }
       },
-      child: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.homeGradientStart,
-            AppColors.scaffoldGradientEnd,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          stops: [0.0, 0.45],
-        ),
+      child: BlocBuilder<GroupInformationBloc, GroupInformationState>(
+        builder: (context, state) {
+          return Scaffold(
+            extendBodyBehindAppBar: true,
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              backgroundColor: AppColors.navActive,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              title: Center(
+                child: state is GroupInformationLoaded
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 20, bottom: 10),
+                        child: SizedBox(
+                          height: 80,
+                          child: Hero(
+                            tag: 'agencyLogo_${state.groupInformation.groupId}',
+                            child: AgencyLogo(
+                                agencyCode: state.groupInformation.agencyCode),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              centerTitle: true,
+            ),
+            body: _buildBody(context, state),
+          );
+        },
       ),
-      child: Scaffold(
-        extendBodyBehindAppBar: true,
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: AppColors.navActive,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          title: BlocBuilder<GroupInformationBloc, GroupInformationState>(
-            builder: (context, state) {
-              if (state is GroupInformationLoaded) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 20, bottom: 10),
-                  child: SizedBox(
-                    height: 80,
-                    child: Hero(
-                      tag: 'agencyLogo_${state.groupInformation.groupId}', // Unique tag
-                      child: AgencyLogo(
-                          agencyCode: state.groupInformation.agencyCode),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, GroupInformationState state) {
+    if (state is GroupInformationLoading) {
+      return const Center(child: CircularProgressIndicator());
+    } else if (state is GroupInformationLoaded) {
+      final groupInfo = state.groupInformation;
+      final user = FirebaseAuth.instance.currentUser;
+
+      // Merge events and flights into a single timeline list
+      final List<dynamic> sortableEvents = [
+        ...groupInfo.timelineEvents
+            .map((e) => {'date': e.startDate, 'item': e, 'type': 'event'}),
+        ...(groupInfo.flights ?? [])
+            .map((f) => {'date': f.flightDate, 'item': f, 'type': 'flight'}),
+      ]..sort((a, b) => a['date'].compareTo(b['date']));
+
+      sortableEvents.insert(0, {
+        'date': groupInfo.departureDate,
+        'item': groupInfo,
+        'type': 'departure'
+      });
+      sortableEvents.add(
+          {'date': groupInfo.returnDate, 'item': groupInfo, 'type': 'return'});
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 1000;
+
+          if (!isNarrow) {
+            return SafeArea(
+              child: Row(
+                children: [
+                  Flexible(
+                    flex: 3,
+                    child: _buildTimeline(context, groupInfo, sortableEvents),
+                  ),
+                  Flexible(
+                    flex: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        children: [
+                          Expanded(
+                              child: _buildMessagesPanel(
+                                  context, groupInfo, user)),
+                          const SizedBox(height: 8),
+                          Expanded(child: _buildGroupPanel(context, groupInfo)),
+                        ],
+                      ),
                     ),
                   ),
-                );
-              }
-              // Fallback while loading
-              return const SizedBox.shrink();
-            },
-          ),
-          centerTitle: true, // keep it centered
-        ),
-        backgroundColor: Colors.transparent,
-        body: BlocBuilder<GroupInformationBloc, GroupInformationState>(
-          builder: (context, state) {
-            if (state is GroupInformationLoading) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (state is GroupInformationLoaded) {
-              final groupInfo = state.groupInformation;
-              final user = FirebaseAuth.instance.currentUser;
-
-              // Merge events and flights into a single timeline list
-              final List<dynamic> sortableEvents = [
-                ...groupInfo.timelineEvents.map(
-                    (e) => {'date': e.startDate, 'item': e, 'type': 'event'}),
-                ...(groupInfo.flights ?? []).map(
-                    (f) => {'date': f.flightDate, 'item': f, 'type': 'flight'}),
-              ]..sort((a, b) => a['date'].compareTo(b['date']));
-
-              sortableEvents.insert(0, {
-                'date': groupInfo.departureDate,
-                'item': groupInfo,
-                'type': 'departure'
-              });
-              sortableEvents.add({
-                'date': groupInfo.returnDate,
-                'item': groupInfo,
-                'type': 'return'
-              });
-
-              return LayoutBuilder(
-  builder: (context, constraints) {
-    final isNarrow = constraints.maxWidth < 1000; // adjust breakpoint
-
-    if (!isNarrow) {
-      // --- Wide screen layout ---
-      return SafeArea(
-        child: Row(
-          children: [
-            Flexible(
-              flex: 3, // Timeline takes more space
-              child: _buildTimeline(context, groupInfo, sortableEvents),
-            ),
-            Flexible(
-              flex: 2,
-              child: Padding(
+                  Flexible(
+                    flex: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        children: [
+                          Expanded(
+                              child: _buildDocumentsPanel(context, groupInfo)),
+                          const SizedBox(height: 8),
+                          Expanded(
+                              child:
+                                  _buildPackingListPanel(context, groupInfo)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            return SafeArea(
+              child: SingleChildScrollView(
+                controller: widget.scrollController,
                 padding: const EdgeInsets.all(8.0),
                 child: Column(
                   children: [
-                    Expanded(child: _buildMessagesPanel(context, groupInfo, user)),
-                    const SizedBox(height: 8),
-                    Expanded(child: _buildGroupPanel(context, groupInfo)),
+                    SizedBox(
+                      height: 300,
+                      child: _buildMessagesPanel(context, groupInfo, user),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 300,
+                      child: _buildGroupPanel(context, groupInfo),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 300,
+                      child: _buildDocumentsPanel(context, groupInfo),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 300,
+                      child: _buildPackingListPanel(context, groupInfo),
+                    ),
                   ],
                 ),
               ),
-            ),
-            Flexible(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  children: [
-                    Expanded(child: _buildDocumentsPanel(context, groupInfo)),
-                    const SizedBox(height: 8),
-                    Expanded(child: _buildPackingListPanel(context, groupInfo)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+            );
+          }
+        },
       );
+    } else if (state is GroupInformationError) {
+      return Center(child: Text('Error: ${state.message}'));
     } else {
-      // --- Narrow / mobile layout ---
-return SafeArea(
-  child: SingleChildScrollView(
-    controller: widget.scrollController,
-    padding: const EdgeInsets.all(8.0),
-    child: Column(
-      children: [
-        SizedBox(
-          height: 300, // or adjust to your preferred panel height
-          child: _buildMessagesPanel(context, groupInfo, user),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 300,
-          child: _buildGroupPanel(context, groupInfo),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 300,
-          child: _buildDocumentsPanel(context, groupInfo),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 300,
-          child: _buildPackingListPanel(context, groupInfo),
-        ),
-      ],
-    ),
-  ),
-);
+      return const Center(child: CircularProgressIndicator());
     }
-  },
-);
-            } else if (state is GroupInformationError) {
-              return Center(child: Text('Error: ${state.message}'));
-            } else {
-              return const Center(child: CircularProgressIndicator());
-            }
-          },
-        ),
-      ),
-    ),
-    );
   }
 
   // --- TIMELINE ---
@@ -580,19 +610,27 @@ return SafeArea(
                     endChild: childWidget,
                     indicatorStyle: IndicatorStyle(
                       drawGap: true,
-                      color: (itemData['type'] == 'departure' || itemData['type'] == 'return')
+                      color: (itemData['type'] == 'departure' ||
+                              itemData['type'] == 'return')
                           ? Colors.transparent
                           : Colors.black,
-                      width: (itemData['type'] == 'departure' || itemData['type'] == 'return') ? 35 : 7,
-                      iconStyle: (itemData['type'] == 'departure' || itemData['type'] == 'return')
+                      width: (itemData['type'] == 'departure' ||
+                              itemData['type'] == 'return')
+                          ? 35
+                          : 7,
+                      iconStyle: (itemData['type'] == 'departure' ||
+                              itemData['type'] == 'return')
                           ? IconStyle(
                               color: Colors.black,
                               fontSize: 20,
-                              iconData: itemData['type'] == 'departure' ? Icons.flight_takeoff : Icons.flight_land,
+                              iconData: itemData['type'] == 'departure'
+                                  ? Icons.flight_takeoff
+                                  : Icons.flight_land,
                             )
                           : null,
                     ),
-                    beforeLineStyle: const LineStyle(thickness: 2, color: Colors.black),
+                    beforeLineStyle:
+                        const LineStyle(thickness: 2, color: Colors.black),
                   );
                 },
               ),
@@ -613,7 +651,8 @@ return SafeArea(
                   ),
                 );
                 if (result != null && mounted) {
-                  context.read<GroupInformationBloc>().add(LoadGroupInformationById(groupId: groupInfo.groupId));
+                  context.read<GroupInformationBloc>().add(
+                      LoadGroupInformationById(groupId: groupInfo.groupId));
                 }
               },
               backgroundColor: AppColors.primary,
@@ -678,8 +717,11 @@ return SafeArea(
                               if (msg.timestamp != null) ...[
                                 const SizedBox(height: 4),
                                 Text(
-                                  DateFormat('dd/MM/yyyy HH:mm').format(msg.timestamp!),
-                                  style: const TextStyle(fontSize: 12, color: Color.fromARGB(255, 0, 0, 0)),
+                                  DateFormat('dd/MM/yyyy HH:mm')
+                                      .format(msg.timestamp!),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color.fromARGB(255, 0, 0, 0)),
                                 ),
                               ],
                             ],
@@ -726,13 +768,15 @@ return SafeArea(
     );
   }
 
-  void _showDeleteDocumentConfirmationDialog(BuildContext context, Reference pdfFile) {
+  void _showDeleteDocumentConfirmationDialog(
+      BuildContext context, Reference pdfFile) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Slet dokument?'),
-          content: Text('Er du sikker på, du vil slette "${pdfFile.name}"? Handlingen kan ikke fortrydes.'),
+          content: Text(
+              'Er du sikker på, du vil slette "${pdfFile.name}"? Handlingen kan ikke fortrydes.'),
           actions: <Widget>[
             TextButton(
               child: const Text('Annuller'),
@@ -778,13 +822,15 @@ return SafeArea(
     }
   }
 
-  void _showDeleteFolderConfirmationDialog(BuildContext context, Reference folder) {
+  void _showDeleteFolderConfirmationDialog(
+      BuildContext context, Reference folder) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Slet mappe?'),
-          content: Text('Er du sikker på, du vil slette mappen "${folder.name}" og alt dens indhold? Handlingen kan ikke fortrydes.'),
+          content: Text(
+              'Er du sikker på, du vil slette mappen "${folder.name}" og alt dens indhold? Handlingen kan ikke fortrydes.'),
           actions: <Widget>[
             TextButton(
               child: const Text('Annuller'),
@@ -794,7 +840,8 @@ return SafeArea(
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Slet'),
               onPressed: () async {
-                Navigator.of(dialogContext).pop(); // Close dialog before async operation
+                Navigator.of(dialogContext)
+                    .pop(); // Close dialog before async operation
                 try {
                   await _deleteFolderRecursive(folder);
                   if (mounted) {
@@ -818,7 +865,8 @@ return SafeArea(
     );
   }
 
-  Future<void> _moveFolderContents(Reference source, Reference destination) async {
+  Future<void> _moveFolderContents(
+      Reference source, Reference destination) async {
     final listResult = await source.listAll();
 
     // Move files
@@ -849,7 +897,9 @@ return SafeArea(
           decoration: const InputDecoration(labelText: 'Nyt mappenavn'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuller')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuller')),
           ElevatedButton(
             onPressed: () async {
               final newName = folderNameController.text.trim();
@@ -869,7 +919,8 @@ return SafeArea(
                   } catch (e) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Fejl ved omdøbning af mappe: $e')),
+                        SnackBar(
+                            content: Text('Fejl ved omdøbning af mappe: $e')),
                       );
                     }
                   }
@@ -889,7 +940,8 @@ return SafeArea(
       final listResult = await baseRef.listAll();
 
       // Add files in the current directory, ignoring placeholder files
-      allFiles.addAll(listResult.items.where((ref) => !ref.name.startsWith('.')));
+      allFiles
+          .addAll(listResult.items.where((ref) => !ref.name.startsWith('.')));
 
       // Recursively get files from subdirectories
       for (final prefix in listResult.prefixes) {
@@ -910,7 +962,8 @@ return SafeArea(
   Widget _buildDocumentsPanel(
       BuildContext context, GroupInformation groupInfo) {
     final user = FirebaseAuth.instance.currentUser;
-    final isRoot = _currentDocsRef?.fullPath == '${groupInfo.groupId}/documents';
+    final isRoot =
+        _currentDocsRef?.fullPath == '${groupInfo.groupId}/documents';
 
     return Card(
       elevation: 10,
@@ -935,7 +988,9 @@ return SafeArea(
                     if (!isRoot) const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        isRoot ? 'Dokumenter' : _currentDocsRef?.name ?? 'Dokumenter',
+                        isRoot
+                            ? 'Dokumenter'
+                            : _currentDocsRef?.name ?? 'Dokumenter',
                         style: const TextStyle(
                             fontSize: 21, fontWeight: FontWeight.w300),
                         overflow: TextOverflow.ellipsis,
@@ -949,14 +1004,15 @@ return SafeArea(
                 child: _currentFiles.isEmpty && _currentFolders.isEmpty
                     ? const Center(child: Text('Tom mappe.'))
                     : ListView.builder(
-                        itemCount: _currentFolders.length + _currentFiles.length,
+                        itemCount:
+                            _currentFolders.length + _currentFiles.length,
                         itemBuilder: (context, index) {
                           if (index < _currentFolders.length) {
                             // Folder Item
                             final folder = _currentFolders[index];
                             return ListTile(
-                              leading: Icon(Icons.folder,
-                                  color: AppColors.primary),
+                              leading:
+                                  Icon(Icons.folder, color: AppColors.primary),
                               title: Text(folder.name,
                                   overflow: TextOverflow.ellipsis),
                               onTap: () => _navigateToFolder(folder),
@@ -965,13 +1021,19 @@ return SafeArea(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.black),
-                                          onPressed: () => _showRenameFolderDialog(context, folder),
+                                          icon: const Icon(Icons.edit,
+                                              color: Colors.black),
+                                          onPressed: () =>
+                                              _showRenameFolderDialog(
+                                                  context, folder),
                                           tooltip: 'Omdøb mappe',
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          onPressed: () => _showDeleteFolderConfirmationDialog(context, folder),
+                                          icon: const Icon(Icons.delete,
+                                              color: Colors.red),
+                                          onPressed: () =>
+                                              _showDeleteFolderConfirmationDialog(
+                                                  context, folder),
                                           tooltip: 'Slet mappe',
                                         ),
                                       ],
@@ -993,7 +1055,8 @@ return SafeArea(
                                       DateFormat('dd/MM/yyyy HH:mm')
                                           .format(metadata!.timeCreated!),
                                       style: const TextStyle(
-                                          fontSize: 12, color: Color.fromARGB(255, 0, 0, 0)),
+                                          fontSize: 12,
+                                          color: Color.fromARGB(255, 0, 0, 0)),
                                     )
                                   : null,
                               onTap: () async {
@@ -1003,8 +1066,11 @@ return SafeArea(
                               },
                               trailing: (user?.emailVerified ?? false)
                                   ? IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      onPressed: () => _showDeleteDocumentConfirmationDialog(context, pdfFile),
+                                      icon: const Icon(Icons.delete,
+                                          color: Colors.red),
+                                      onPressed: () =>
+                                          _showDeleteDocumentConfirmationDialog(
+                                              context, pdfFile),
                                     )
                                   : null,
                             );
@@ -1175,387 +1241,428 @@ return SafeArea(
     );
   }
 
+  void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
+      String bureauName, String bureauEmail, List<Reference> allDocuments) {
+    final user = FirebaseAuth.instance.currentUser;
 
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Du skal være logget ind for at sende e-mail')),
+      );
+      return;
+    }
 
-void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
-    String bureauName, String bureauEmail, List<Reference> allDocuments) {
-  final user = FirebaseAuth.instance.currentUser;
+    final fromNameController = TextEditingController(text: bureauName);
+    final subjectController = TextEditingController();
+    final bodyController = TextEditingController();
+    final replyToController = TextEditingController(text: bureauEmail);
 
-  if (user == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Du skal være logget ind for at sende e-mail')),
-    );
-    return;
-  }
+    final allMembersWithEmail =
+        groupInfo.members.where((m) => m.email.isNotEmpty).toList();
 
-  final fromNameController = TextEditingController(text: bureauName);
-  final subjectController = TextEditingController();
-  final bodyController = TextEditingController();
-  final replyToController = TextEditingController(text: bureauEmail);
+    List<String> selectedEmails =
+        allMembersWithEmail.map((m) => m.email).toList();
 
-  final allMembersWithEmail =
-      groupInfo.members.where((m) => m.email.isNotEmpty).toList();
+    List<Reference> selectedDocuments = [];
 
-  List<String> selectedEmails =
-      allMembersWithEmail.map((m) => m.email).toList();
-
-  List<Reference> selectedDocuments = [];
-
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) => DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, scrollController) => StatefulBuilder(
-        builder: (context, setState) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // HEADER
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const Text(
-                      "Ny e-mail",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.send,
-                          color: AppColors.primary),
-                      onPressed: () async {
-                        if (selectedEmails.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Vælg mindst én modtager')),
-                          );
-                          return;
-                        }
-
-                        if (subjectController.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Emne mangler')),
-                          );
-                          return;
-                        }
-
-                        // Generate document links
-                        String documentLinksHtml = '';
-                        if (selectedDocuments.isNotEmpty) {
-                          documentLinksHtml +=
-                              '<br><br><b>Vedhæftede dokumenter:</b><br><ul>';
-                          for (final docRef in selectedDocuments) {
-                            try {
-                              final url = await docRef.getDownloadURL();
-                              documentLinksHtml +=
-                                  '<li><a href="$url">${docRef.name}</a></li>';
-                            } catch (e) {
-                              documentLinksHtml +=
-                                  '<li><i>(Link for ${docRef.name} kunne ikke genereres)</i></li>';
-                            }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollController) => StatefulBuilder(
+          builder: (context, setState) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // HEADER
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const Text(
+                        "Ny e-mail",
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w500),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.send, color: AppColors.primary),
+                        onPressed: () async {
+                          if (selectedEmails.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Vælg mindst én modtager')),
+                            );
+                            return;
                           }
-                          documentLinksHtml += '</ul>';
-                        }
 
-                        try {
-                          await user.getIdToken(true);
-
-                          final functions = FirebaseFunctions.instanceFor(
-                            region: 'europe-west1',
-                          );
-
-                          final callable = functions.httpsCallable('sendGroupEmail');
-
-                          await callable.call({
-                            'to': selectedEmails,
-                            'subject': subjectController.text.trim(),
-                            'html': bodyController.text.trim().replaceAll('\n', '<br>') +
-                                documentLinksHtml,
-                            'fromName': fromNameController.text.trim(),
-                            'replyTo': replyToController.text.trim(),
-                          });
-
-                          if (!context.mounted) return;
-
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('E-mail sendt')),
-                          );
-                        } on FirebaseFunctionsException catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.message ?? 'Kunne ikke sende e-mail')),
-                          );
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Fejl: $e')),
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(),
-
-              // CONTENT
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    // FROM
-                    const Text("Fra", style: TextStyle(color: Colors.grey)),
-                    TextField(
-                      controller: fromNameController,
-                      decoration: const InputDecoration(labelText: 'Navn (vises som afsender)'),
-                    ),
-
-                    const Divider(),
-
-                    // REPLY-TO
-                    const Text("Svar til", style: TextStyle(color: Colors.grey)),
-                    TextField(
-                      controller: replyToController,
-                      decoration: const InputDecoration(labelText: 'E-mail (svar vil gå til denne)'),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-
-                    const Divider(),
-
-                    // TO
-                    InkWell(
-                      onTap: () async {
-                        final result = await showDialog<List<String>>(
-                          context: context,
-                          builder: (context) {
-                            List<String> tempSelected = List.from(selectedEmails);
-
-                            return StatefulBuilder(
-                              builder: (context, setDialogState) {
-                                return AlertDialog(
-                                  title: const Text('Vælg modtagere'),
-                                  content: SizedBox(
-                                    width: 400,
-                                    child: ListView.builder(
-                                      shrinkWrap: true,
-                                      itemCount: allMembersWithEmail.length,
-                                      itemBuilder: (context, index) {
-                                        final member = allMembersWithEmail[index];
-                                        final isSelected = tempSelected.contains(member.email);
-
-                                        return CheckboxListTile(
-                                          title: Text(member.name),
-                                          subtitle: Text(member.email),
-                                          value: isSelected,
-                                          onChanged: (value) {
-                                            setDialogState(() {
-                                              value == true
-                                                  ? tempSelected.add(member.email)
-                                                  : tempSelected.remove(member.email);
-                                            });
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Annuller'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () => Navigator.pop(context, tempSelected),
-                                      child: const Text('OK'),
-                                    ),
-                                  ],
-                                );
-                              },
+                          if (subjectController.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Emne mangler')),
                             );
-                          },
-                        );
+                            return;
+                          }
 
-                        if (result != null && context.mounted) {
-                          setState(() => selectedEmails = result);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            const Text("Til:", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                selectedEmails.isEmpty
-                                    ? 'Ingen modtagere'
-                                    : selectedEmails.join(', '),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down),
-                          ],
-                        ),
+                          // Generate document links
+                          String documentLinksHtml = '';
+                          if (selectedDocuments.isNotEmpty) {
+                            documentLinksHtml +=
+                                '<br><br><b>Vedhæftede dokumenter:</b><br><ul>';
+                            for (final docRef in selectedDocuments) {
+                              try {
+                                final url = await docRef.getDownloadURL();
+                                documentLinksHtml +=
+                                    '<li><a href="$url">${docRef.name}</a></li>';
+                              } catch (e) {
+                                documentLinksHtml +=
+                                    '<li><i>(Link for ${docRef.name} kunne ikke genereres)</i></li>';
+                              }
+                            }
+                            documentLinksHtml += '</ul>';
+                          }
+
+                          try {
+                            await user.getIdToken(true);
+
+                            final functions = FirebaseFunctions.instanceFor(
+                              region: 'europe-west1',
+                            );
+
+                            final callable =
+                                functions.httpsCallable('sendGroupEmail');
+
+                            await callable.call({
+                              'to': selectedEmails,
+                              'subject': subjectController.text.trim(),
+                              'html': bodyController.text
+                                      .trim()
+                                      .replaceAll('\n', '<br>') +
+                                  documentLinksHtml,
+                              'fromName': fromNameController.text.trim(),
+                              'replyTo': replyToController.text.trim(),
+                            });
+
+                            if (!context.mounted) return;
+
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('E-mail sendt')),
+                            );
+                          } on FirebaseFunctionsException catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      e.message ?? 'Kunne ikke sende e-mail')),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Fejl: $e')),
+                            );
+                          }
+                        },
                       ),
-                    ),
+                    ],
+                  ),
+                ),
 
-                    const Divider(height: 1),
+                const Divider(),
 
-                    // ATTACHMENTS
-                    InkWell(
-                      onTap: () async {
-                        final result = await showDialog<List<Reference>>(
-                          context: context,
-                          builder: (context) {
-                            List<Reference> tempSelected =
-                                List.from(selectedDocuments);
+                // CONTENT
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: [
+                      // FROM
+                      const Text("Fra", style: TextStyle(color: Colors.grey)),
+                      TextField(
+                        controller: fromNameController,
+                        decoration: const InputDecoration(
+                            labelText: 'Navn (vises som afsender)'),
+                      ),
 
-                            return StatefulBuilder(
-                              builder: (context, setDialogState) {
-                                return AlertDialog(
-                                  title: const Text('Vælg dokumenter'),
-                                  content: SizedBox(
-                                    width: 400,
-                                    child: allDocuments.isEmpty
-                                        ? const Center(
-                                            child:
-                                                Text('Ingen dokumenter fundet.'))
-                                        : ListView.builder(
-                                            shrinkWrap: true,
-                                            itemCount: allDocuments.length,
-                                            itemBuilder: (context, index) {
-                                              final doc = allDocuments[index];
-                                              final isSelected = tempSelected.any(
-                                                  (d) => d.fullPath == doc.fullPath);
+                      const Divider(),
 
-                                              return CheckboxListTile(
-                                                title: Text(doc.name,
-                                                    overflow:
-                                                        TextOverflow.ellipsis),
-                                                subtitle: Text(
-                                                  doc.fullPath
-                                                      .replaceFirst(
-                                                          '${groupInfo.groupId}/documents/',
-                                                          '')
-                                                      .replaceFirst(
-                                                          '/${doc.name}', ''),
-                                                  style: const TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 12),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                value: isSelected,
-                                                onChanged: (value) {
-                                                  setDialogState(() {
-                                                    if (value == true) {
-                                                      tempSelected.add(doc);
-                                                    } else {
-                                                      tempSelected.removeWhere((d) =>
-                                                          d.fullPath ==
-                                                          doc.fullPath);
-                                                    }
-                                                  });
-                                                },
-                                              );
+                      // REPLY-TO
+                      const Text("Svar til",
+                          style: TextStyle(color: Colors.grey)),
+                      TextField(
+                        controller: replyToController,
+                        decoration: const InputDecoration(
+                            labelText: 'E-mail (svar vil gå til denne)'),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+
+                      const Divider(),
+
+                      // TO
+                      InkWell(
+                        onTap: () async {
+                          final result = await showDialog<List<String>>(
+                            context: context,
+                            builder: (context) {
+                              List<String> tempSelected =
+                                  List.from(selectedEmails);
+
+                              return StatefulBuilder(
+                                builder: (context, setDialogState) {
+                                  return AlertDialog(
+                                    title: const Text('Vælg modtagere'),
+                                    content: SizedBox(
+                                      width: 400,
+                                      child: ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: allMembersWithEmail.length,
+                                        itemBuilder: (context, index) {
+                                          final member =
+                                              allMembersWithEmail[index];
+                                          final isSelected = tempSelected
+                                              .contains(member.email);
+
+                                          return CheckboxListTile(
+                                            title: Text(member.name),
+                                            subtitle: Text(member.email),
+                                            value: isSelected,
+                                            onChanged: (value) {
+                                              setDialogState(() {
+                                                value == true
+                                                    ? tempSelected
+                                                        .add(member.email)
+                                                    : tempSelected
+                                                        .remove(member.email);
+                                              });
                                             },
-                                          ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Annuller'),
+                                          );
+                                        },
+                                      ),
                                     ),
-                                    ElevatedButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, tempSelected),
-                                      child: const Text('OK'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                        );
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Annuller'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(
+                                            context, tempSelected),
+                                        child: const Text('OK'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          );
 
-                        if (result != null && context.mounted) {
-                          setState(() => selectedDocuments = result);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.attach_file, color: Colors.grey),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                selectedDocuments.isEmpty
-                                    ? 'Vedhæft dokumenter (som links)'
-                                    : selectedDocuments
-                                        .map((d) => d.name)
-                                        .join(', '),
-                                overflow: TextOverflow.ellipsis,
+                          if (result != null && context.mounted) {
+                            setState(() => selectedEmails = result);
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              const Text("Til:",
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 16)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  selectedEmails.isEmpty
+                                      ? 'Ingen modtagere'
+                                      : selectedEmails.join(', '),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            const Icon(Icons.arrow_drop_down),
-                          ],
+                              const Icon(Icons.arrow_drop_down),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
-                    const Divider(height: 1),
+                      const Divider(height: 1),
 
-                    // SUBJECT
-                    TextField(
-                      controller: subjectController,
-                      decoration: const InputDecoration(
-                        hintText: 'Emne',
-                        border: InputBorder.none,
+                      // ATTACHMENTS
+                      InkWell(
+                        onTap: () async {
+                          final result = await showDialog<List<Reference>>(
+                            context: context,
+                            builder: (context) {
+                              List<Reference> tempSelected =
+                                  List.from(selectedDocuments);
+
+                              return StatefulBuilder(
+                                builder: (context, setDialogState) {
+                                  return AlertDialog(
+                                    title: const Text('Vælg dokumenter'),
+                                    content: SizedBox(
+                                      width: 400,
+                                      child: allDocuments.isEmpty
+                                          ? const Center(
+                                              child: Text(
+                                                  'Ingen dokumenter fundet.'))
+                                          : ListView.builder(
+                                              shrinkWrap: true,
+                                              itemCount: allDocuments.length,
+                                              itemBuilder: (context, index) {
+                                                final doc = allDocuments[index];
+                                                final isSelected =
+                                                    tempSelected.any((d) =>
+                                                        d.fullPath ==
+                                                        doc.fullPath);
+
+                                                return CheckboxListTile(
+                                                  title: Text(doc.name,
+                                                      overflow: TextOverflow
+                                                          .ellipsis),
+                                                  subtitle: Text(
+                                                    doc.fullPath
+                                                        .replaceFirst(
+                                                            '${groupInfo.groupId}/documents/',
+                                                            '')
+                                                        .replaceFirst(
+                                                            '/${doc.name}', ''),
+                                                    style: const TextStyle(
+                                                        color: Colors.grey,
+                                                        fontSize: 12),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                  value: isSelected,
+                                                  onChanged: (value) {
+                                                    setDialogState(() {
+                                                      if (value == true) {
+                                                        tempSelected.add(doc);
+                                                      } else {
+                                                        tempSelected
+                                                            .removeWhere((d) =>
+                                                                d.fullPath ==
+                                                                doc.fullPath);
+                                                      }
+                                                    });
+                                                  },
+                                                );
+                                              },
+                                            ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Annuller'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(
+                                            context, tempSelected),
+                                        child: const Text('OK'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          );
+
+                          if (result != null && context.mounted) {
+                            setState(() => selectedDocuments = result);
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.attach_file, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  selectedDocuments.isEmpty
+                                      ? 'Vedhæft dokumenter (som links)'
+                                      : selectedDocuments
+                                          .map((d) => d.name)
+                                          .join(', '),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const Icon(Icons.arrow_drop_down),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
 
-                    const Divider(height: 1),
+                      const Divider(height: 1),
 
-                    // IMAGE INSERTION
-                  
-                    const Divider(height: 1),
-
-                    // BODY
-                    TextField(
-                      controller: bodyController,
-                      decoration: const InputDecoration(
-                        hintText: 'Skriv e-mail',
-                        border: InputBorder.none,
+                      // SUBJECT
+                      TextField(
+                        controller: subjectController,
+                        decoration: const InputDecoration(
+                          hintText: 'Emne',
+                          border: InputBorder.none,
+                        ),
                       ),
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                    ),
-                  ],
+
+                      const Divider(height: 1),
+
+                      // IMAGE INSERTION
+
+                      const Divider(height: 1),
+
+                      // BODY
+                      TextField(
+                        controller: bodyController,
+                        decoration: const InputDecoration(
+                          hintText: 'Skriv e-mail',
+                          border: InputBorder.none,
+                        ),
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
-
+    );
+  }
 
   // --- GROUP PANEL ---
   Widget _buildGroupPanel(BuildContext context, GroupInformation groupInfo) {
     final user = FirebaseAuth.instance.currentUser;
+
+    // If the group is a template, show a watermark instead of the member/guide lists.
+    if (groupInfo.isTemplate == true) {
+      return Card(
+        elevation: 10,
+        color: AppColors.panelBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              "Der kan ikke tilføjes medlemmer til en skabelon",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Card(
       elevation: 10,
       color: AppColors.panelBackground,
@@ -1592,8 +1699,8 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
                       .ref('${groupInfo.groupId}/documents');
                   final allDocuments = await _fetchAllDocuments(docsRootRef);
                   if (mounted) {
-                    _showEmailComposer(context, groupInfo,
-                        groupInfo.bureauName, user?.email ?? '', allDocuments);
+                    _showEmailComposer(context, groupInfo, groupInfo.bureauName,
+                        user?.email ?? '', allDocuments);
                   }
                 },
                 backgroundColor: AppColors.primary,
@@ -1619,27 +1726,27 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
               leading: const Icon(Icons.support_agent),
               title: Text(groupInfo.guides[i].name),
               subtitle: Text('Tel: ${groupInfo.guides[i].phoneNumber}'),
-              trailing: (FirebaseAuth.instance.currentUser?.emailVerified ??
-                      false)
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.black),
-                          onPressed: () => _showAddEditGuideDialog(
-                            context,
-                            groupInfo: groupInfo,
-                            guide: groupInfo.guides[i],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _removeGuide(
-                              context, groupInfo, groupInfo.guides[i]),
-                        ),
-                      ],
-                    )
-                  : null,
+              trailing:
+                  (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.black),
+                              onPressed: () => _showAddEditGuideDialog(
+                                context,
+                                groupInfo: groupInfo,
+                                guide: groupInfo.guides[i],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _removeGuide(
+                                  context, groupInfo, groupInfo.guides[i]),
+                            ),
+                          ],
+                        )
+                      : null,
             ),
           ),
           Positioned(
@@ -1734,31 +1841,33 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
                     ? groupInfo.members[i].email
                     : 'No email',
               ),
-              trailing: (FirebaseAuth.instance.currentUser?.emailVerified ??
-                      false)
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        (groupInfo.members[i].fcmToken != null &&
-                                groupInfo.members[i].fcmToken!.isNotEmpty)
-                            ? const Icon(Icons.smartphone_outlined, color: Color.fromARGB(255, 0, 111, 4))
-                            : const Icon(Icons.phonelink_erase, color: Color.fromARGB(255, 255, 82, 2)),
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.black),
-                          onPressed: () => _showAddEditMemberDialog(
-                            context,
-                            groupInfo: groupInfo,
-                            member: groupInfo.members[i],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _removeMember(
-                              context, groupInfo, groupInfo.members[i]),
-                        ),
-                      ],
-                    )
-                  : null,
+              trailing:
+                  (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            (groupInfo.members[i].fcmToken != null &&
+                                    groupInfo.members[i].fcmToken!.isNotEmpty)
+                                ? const Icon(Icons.smartphone_outlined,
+                                    color: Color.fromARGB(255, 0, 111, 4))
+                                : const Icon(Icons.phonelink_erase,
+                                    color: Color.fromARGB(255, 255, 82, 2)),
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.black),
+                              onPressed: () => _showAddEditMemberDialog(
+                                context,
+                                groupInfo: groupInfo,
+                                member: groupInfo.members[i],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _removeMember(
+                                  context, groupInfo, groupInfo.members[i]),
+                            ),
+                          ],
+                        )
+                      : null,
             ),
           ),
 
@@ -1838,30 +1947,43 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
                     .updateMember(groupInfo.groupId, member, newMember);
               } else {
                 if (email.isNotEmpty) {
+                  FirebaseApp? tempApp;
                   try {
-                    FirebaseApp tempApp = await Firebase.initializeApp(
+                    tempApp = await Firebase.initializeApp(
                       name:
                           'tempAuthApp_${DateTime.now().millisecondsSinceEpoch}',
                       options: Firebase.app().options,
                     );
-                    try {
-                      final generatedPassword = _generateRandomPassword();
-                      UserCredential userCredential =
-                          await FirebaseAuth.instanceFor(app: tempApp)
-                              .createUserWithEmailAndPassword(
-                        email: email,
-                        password: generatedPassword,
-                      );
-                      await userCredential.user?.updateDisplayName(name);
-                    } catch (e) {
-                      print('Error creating user: $e');
-                    } finally {
-                      await tempApp.delete();
+                    final generatedPassword = _generateRandomPassword();
+                    UserCredential userCredential =
+                        await FirebaseAuth.instanceFor(app: tempApp)
+                            .createUserWithEmailAndPassword(
+                      email: email,
+                      password: generatedPassword,
+                    );
+                    await userCredential.user?.updateDisplayName(name);
+                  } on FirebaseAuthException catch (e) {
+                    if (!context.mounted) return;
+                    if (e.code == 'email-already-in-use') {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text(
+                              'Brugeren findes allerede og tilføjes til gruppen.')));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(
+                              'Fejl ved oprettelse af bruger: ${e.message}')));
+                      return; // Stop if user creation fails
                     }
                   } catch (e) {
-                    print('Error initializing temp app: $e');
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('En uventet fejl opstod: $e')));
+                    return; // Stop on other errors
+                  } finally {
+                    await tempApp?.delete();
                   }
                 }
+                // Add member to Firestore group only if auth creation was successful (or no email was provided)
                 if (context.mounted) {
                   await context
                       .read<GroupInformationRepository>()
@@ -1869,6 +1991,7 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
                 }
               }
               if (context.mounted) {
+                // This will run for edits and successful adds
                 context
                     .read<GroupInformationBloc>()
                     .add(LoadGroupInformationById(groupId: groupInfo.groupId));
@@ -1918,209 +2041,243 @@ void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
 
   // --- PACKING LIST CRUD ---
 
-void _showAddEditCategoryDialog(
-  BuildContext context, {
-  required GroupInformation groupInfo,
-  PackinglistCategories? category,
-}) {
-  final isEditing = category != null;
-  final categoryNameController =
-      TextEditingController(text: category?.categoryName ?? '');
-  final List<String> items = isEditing ? List<String>.from(category.items) : [];
+  void _showAddEditCategoryDialog(
+    BuildContext context, {
+    required GroupInformation groupInfo,
+    PackinglistCategories? category,
+  }) {
+    final isEditing = category != null;
+    final categoryNameController =
+        TextEditingController(text: category?.categoryName ?? '');
+    final List<String> items =
+        isEditing ? List<String>.from(category.items) : [];
 
-  // Keep track of selected icon name
-  String selectedIconName = category?.iconName ?? 'mdi-folder';
+    // Keep track of selected icon name
+    String selectedIconName = category?.iconName ?? 'mdi-folder';
 
-  showDialog(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          void addItem() {
-            final itemController = TextEditingController();
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Tilføj emne'),
-                content: TextField(
-                  controller: itemController,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Emne'),
-                ),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Annuller')),
-                  ElevatedButton(
-                      onPressed: () {
-                        if (itemController.text.isNotEmpty) {
-                          setState(() => items.add(itemController.text));
-                          Navigator.pop(context);
-                        }
-                      },
-                      child: const Text('Tilføj')),
-                ],
-              ),
-            );
-          }
-
-          void pickIcon() {
-            final mdiIcons = {
-              'mdi-folder': MdiIcons.folder, // General
-              'mdi-tshirt-crew': MdiIcons.tshirtCrew, // Tøj
-              'mdi-lotion-outline': MdiIcons.lotionOutline, // Toiletsager
-              'mdi-pill': MdiIcons.pill, // Medicin
-              'mdi-camera': MdiIcons.camera, // Elektronik
-              'mdi-passport': MdiIcons.passport, // Dokumenter
-              'mdi-beach': MdiIcons.beach, // Strand
-              'mdi-hiking': MdiIcons.hiking, // Aktiviteter
-              'mdi-wallet': MdiIcons.wallet, // Penge
-              'mdi-sunglasses': MdiIcons.sunglasses, // Accessories
-              'mdi-book-open-variant': MdiIcons.bookOpenVariant, // Læsestof
-              'mdi-food-apple': MdiIcons.foodApple, // Snacks
-              'mdi-star': MdiIcons.star, // Diverse
-              'mdi-gift': MdiIcons.gift, // Gaver
-              'mdi-headphones': MdiIcons.headphones, // Underholdning
-              'mdi-power-plug': MdiIcons.powerPlug, // Opladere
-            };
-
-            showDialog(
-              context: context,
-              builder: (iconDialogContext) => Dialog(
-                backgroundColor: AppColors.iconPickerDialog,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.7,
-                    maxWidth: MediaQuery.of(context).size.width * 0.4,
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            void addItem() {
+              final itemController = TextEditingController();
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Tilføj emne'),
+                  content: TextField(
+                    controller: itemController,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Emne'),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('Vælg ikon', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: GridView.builder(
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, crossAxisSpacing: 12, mainAxisSpacing: 12),
-                            itemCount: mdiIcons.length,
-                            itemBuilder: (context, index) {
-                              final entry = mdiIcons.entries.elementAt(index);
-                              final isSelected = entry.key == selectedIconName;
-                              return InkWell(
-                                onTap: () {
-                                  setState(() => selectedIconName = entry.key);
-                                  Navigator.pop(iconDialogContext);
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(color: isSelected ? Colors.brown[400] : Colors.brown[100], borderRadius: BorderRadius.circular(12)),
-                                  child: Icon(entry.value, size: 36, color: isSelected ? Colors.white : Colors.black87),
-                                ),
-                              );
-                            },
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Annuller')),
+                    ElevatedButton(
+                        onPressed: () {
+                          if (itemController.text.isNotEmpty) {
+                            setState(() => items.add(itemController.text));
+                            Navigator.pop(context);
+                          }
+                        },
+                        child: const Text('Tilføj')),
+                  ],
+                ),
+              );
+            }
+
+            void pickIcon() {
+              final mdiIcons = {
+                'mdi-folder': MdiIcons.folder, // General
+                'mdi-tshirt-crew': MdiIcons.tshirtCrew, // Tøj
+                'mdi-lotion-outline': MdiIcons.lotionOutline, // Toiletsager
+                'mdi-pill': MdiIcons.pill, // Medicin
+                'mdi-camera': MdiIcons.camera, // Elektronik
+                'mdi-passport': MdiIcons.passport, // Dokumenter
+                'mdi-beach': MdiIcons.beach, // Strand
+                'mdi-hiking': MdiIcons.hiking, // Aktiviteter
+                'mdi-wallet': MdiIcons.wallet, // Penge
+                'mdi-sunglasses': MdiIcons.sunglasses, // Accessories
+                'mdi-book-open-variant': MdiIcons.bookOpenVariant, // Læsestof
+                'mdi-food-apple': MdiIcons.foodApple, // Snacks
+                'mdi-star': MdiIcons.star, // Diverse
+                'mdi-gift': MdiIcons.gift, // Gaver
+                'mdi-headphones': MdiIcons.headphones, // Underholdning
+                'mdi-power-plug': MdiIcons.powerPlug, // Opladere
+              };
+
+              showDialog(
+                context: context,
+                builder: (iconDialogContext) => Dialog(
+                  backgroundColor: AppColors.iconPickerDialog,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20.0)),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                      maxWidth: MediaQuery.of(context).size.width * 0.4,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text('Vælg ikon',
+                              style: TextStyle(
+                                  fontSize: 22, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: 20),
+                          Expanded(
+                            child: GridView.builder(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 4,
+                                      crossAxisSpacing: 12,
+                                      mainAxisSpacing: 12),
+                              itemCount: mdiIcons.length,
+                              itemBuilder: (context, index) {
+                                final entry = mdiIcons.entries.elementAt(index);
+                                final isSelected =
+                                    entry.key == selectedIconName;
+                                return InkWell(
+                                  onTap: () {
+                                    setState(
+                                        () => selectedIconName = entry.key);
+                                    Navigator.pop(iconDialogContext);
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? Colors.brown[400]
+                                            : Colors.brown[100],
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
+                                    child: Icon(entry.value,
+                                        size: 36,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.black87),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return AlertDialog(
+              backgroundColor: AppColors.dialogAltBackground,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: Text(isEditing ? 'Rediger Kategori' : 'Ny Kategori'),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.3,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Category Name
+                    TextField(
+                      controller: categoryNameController,
+                      decoration:
+                          const InputDecoration(labelText: 'Kategorinavn'),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Icon Picker Row
+                    Row(
+                      children: [
+                        const Text('Ikon:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          icon: Icon(MdiIcons.fromString(selectedIconName) ??
+                              MdiIcons.folder),
+                          onPressed: pickIcon,
+                          tooltip: 'Vælg ikon',
                         ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 16),
+
+                    // Items List
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Emner',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        IconButton(
+                            icon: const Icon(Icons.add_circle),
+                            onPressed: addItem),
+                      ],
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                            title: Text(items[index]),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.remove_circle_outline,
+                                  color: Colors.red),
+                              onPressed: () =>
+                                  setState(() => items.removeAt(index)),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Annuller')),
+                ElevatedButton(
+                  onPressed: () async {
+                    final newCategory = PackinglistCategories(
+                      categoryName: categoryNameController.text,
+                      items: items,
+                      iconName: selectedIconName,
+                    );
+
+                    if (isEditing) {
+                      await context
+                          .read<GroupInformationRepository>()
+                          .updatePackingListCategory(
+                              groupInfo.groupId, category, newCategory);
+                    } else {
+                      await context
+                          .read<GroupInformationRepository>()
+                          .addPackingListCategory(
+                              groupInfo.groupId, newCategory);
+                    }
+                    if (context.mounted) {
+                      context.read<GroupInformationBloc>().add(
+                          LoadGroupInformationById(groupId: groupInfo.groupId));
+                    }
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Gem'),
+                ),
+              ],
             );
-          }
+          },
+        );
+      },
+    );
+  }
 
-          return AlertDialog(
-            backgroundColor: AppColors.dialogAltBackground,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Text(isEditing ? 'Rediger Kategori' : 'Ny Kategori'),
-            content: SizedBox(
-              width: MediaQuery.of(context).size.width * 0.3,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Category Name
-                  TextField(
-                    controller: categoryNameController,
-                    decoration: const InputDecoration(labelText: 'Kategorinavn'),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Icon Picker Row
-                  Row(
-                    children: [
-                      const Text('Ikon:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        icon: Icon(MdiIcons.fromString(selectedIconName) ?? MdiIcons.folder),
-                        onPressed: pickIcon,
-                        tooltip: 'Vælg ikon',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Items List
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Emner', style: TextStyle(fontWeight: FontWeight.bold)),
-                      IconButton(icon: const Icon(Icons.add_circle), onPressed: addItem),
-                    ],
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        return ListTile(
-                          title: Text(items[index]),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                            onPressed: () => setState(() => items.removeAt(index)),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Annuller')),
-              ElevatedButton(
-                onPressed: () {
-                  final newCategory = PackinglistCategories(
-                    categoryName: categoryNameController.text,
-                    items: items,
-                    iconName: selectedIconName,
-                  );
-
-                  if (isEditing) {
-                    context
-                        .read<GroupInformationRepository>()
-                        .updatePackingListCategory(groupInfo.groupId, category, newCategory);
-                  } else {
-                    context
-                        .read<GroupInformationRepository>()
-                        .addPackingListCategory(groupInfo.groupId, newCategory);
-                  }
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text('Gem'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
-
-
-  void _removePackingListCategory(
-      BuildContext context, GroupInformation groupInfo, PackinglistCategories category) {
+  void _removePackingListCategory(BuildContext context,
+      GroupInformation groupInfo, PackinglistCategories category) {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -2133,10 +2290,15 @@ void _showAddEditCategoryDialog(
               child: const Text('Annuller')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              context
+            onPressed: () async {
+              await context
                   .read<GroupInformationRepository>()
                   .deletePackingListCategory(groupInfo.groupId, category);
+              if (context.mounted) {
+                context
+                    .read<GroupInformationBloc>()
+                    .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+              }
               Navigator.pop(dialogContext);
             },
             child: const Text('Slet', style: TextStyle(color: Colors.white)),
@@ -2176,20 +2338,28 @@ void _showAddEditCategoryDialog(
                   itemBuilder: (context, index) {
                     final category = groupInfo.packinglistCategories[index];
                     return ListTile(
-                      leading: const Icon(Icons.check_circle_outline, color: Colors.black),
-                      title: Text(category.categoryName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      leading: const Icon(Icons.check_circle_outline,
+                          color: Colors.black),
+                      title: Text(category.categoryName,
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
                       onTap: () => _openCategoryDialog(context, category),
                       trailing: (user?.emailVerified ?? false)
                           ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.black),
-                                  onPressed: () => _showAddEditCategoryDialog(context, groupInfo: groupInfo, category: category),
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.black),
+                                  onPressed: () => _showAddEditCategoryDialog(
+                                      context,
+                                      groupInfo: groupInfo,
+                                      category: category),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _removePackingListCategory(context, groupInfo, category),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () => _removePackingListCategory(
+                                      context, groupInfo, category),
                                 ),
                               ],
                             )
@@ -2205,9 +2375,35 @@ void _showAddEditCategoryDialog(
               bottom: 16,
               right: 16,
               child: FloatingActionButton(
-              heroTag: 'packinglist_fab_${groupInfo.groupId}',
-                onPressed: () =>
-                    _showAddEditCategoryDialog(context, groupInfo: groupInfo),
+                heroTag: 'packinglist_fab_${groupInfo.groupId}',
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: AppColors.secondary,
+                    builder: (sheetContext) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.add),
+                          title: const Text('Opret ny'),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _showAddEditCategoryDialog(context,
+                                groupInfo: groupInfo);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.library_books),
+                          title: const Text('Vælg fra bibliotek'),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _showLibrarySelectionDialog(context, groupInfo);
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
                 backgroundColor: AppColors.primary,
                 child: const Icon(Icons.add, color: Colors.white),
               ),
@@ -2217,16 +2413,254 @@ void _showAddEditCategoryDialog(
     );
   }
 
-  void _openCategoryDialog(BuildContext context, PackinglistCategories category) {
+  Future<void> _showLibrarySelectionDialog(
+      BuildContext context, GroupInformation groupInfo) async {
+    List<Map<String, dynamic>> library = [];
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('agency')
+          .doc(groupInfo.agencyCode)
+          .get();
+      if (doc.exists && doc.data()!.containsKey('packingListLibrary')) {
+        library =
+            List<Map<String, dynamic>>.from(doc.data()!['packingListLibrary']);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Kunne ikke hente bibliotek: $e')));
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    if (library.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Biblioteket er tomt')));
+      return;
+    }
+
+    final Set<int> selectedIndices = {};
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: AppColors.secondary,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 500,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.library_books,
+                              color: AppColors.primary, size: 28),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Vælg fra bibliotek',
+                            style: GoogleFonts.kanit(
+                                fontSize: 22, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Vælg de pakkelister du vil tilføje til rejsen.',
+                        style: GoogleFonts.kanit(
+                            color: Colors.grey[600], fontSize: 14),
+                      ),
+                      const SizedBox(height: 20),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: library.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final item = library[index];
+                              final isSelected =
+                                  selectedIndices.contains(index);
+                              return InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      selectedIndices.remove(index);
+                                    } else {
+                                      selectedIndices.add(index);
+                                    }
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppColors.primary.withOpacity(0.05)
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : Colors.grey.shade200,
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? AppColors.primary
+                                              : Colors.grey.shade100,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          MdiIcons.fromString(
+                                                  item['iconName'] ??
+                                                      'mdi-folder') ??
+                                              MdiIcons.folder,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.grey.shade600,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item['categoryName'] ??
+                                                  'Uden navn',
+                                              style: GoogleFonts.kanit(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${(item['items'] as List?)?.length ?? 0} ting',
+                                              style: GoogleFonts.kanit(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(Icons.check_circle,
+                                            color: AppColors.primary)
+                                      else
+                                        Icon(Icons.circle_outlined,
+                                            color: Colors.grey.shade300),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: Text('Annuller',
+                                style:
+                                    GoogleFonts.kanit(color: Colors.grey[700])),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                              elevation: 2,
+                            ),
+                            onPressed: selectedIndices.isEmpty
+                                ? null
+                                : () async {
+                                    final repo = context
+                                        .read<GroupInformationRepository>();
+                                    final bloc =
+                                        context.read<GroupInformationBloc>();
+                                    Navigator.pop(dialogContext);
+                                    final futures = <Future>[];
+                                    for (final index in selectedIndices) {
+                                      final item = library[index];
+                                      final newCategory = PackinglistCategories(
+                                        categoryName:
+                                            item['categoryName'] ?? 'Ny liste',
+                                        items: List<String>.from(
+                                            item['items'] ?? []),
+                                        iconName:
+                                            item['iconName'] ?? 'mdi-folder',
+                                      );
+                                      futures.add(repo.addPackingListCategory(
+                                          groupInfo.groupId, newCategory));
+                                    }
+                                    await Future.wait(futures);
+                                    bloc.add(LoadGroupInformationById(
+                                        groupId: groupInfo.groupId));
+                                  },
+                            child: Text(
+                                'Tilføj ${selectedIndices.isNotEmpty ? '(${selectedIndices.length})' : ''}',
+                                style: GoogleFonts.kanit(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openCategoryDialog(
+      BuildContext context, PackinglistCategories category) {
     showDialog(
       context: context,
       builder: (context) {
-        final width = MediaQuery.of(context).size.width * 0.3; // Matches app layout
+        final width =
+            MediaQuery.of(context).size.width * 0.3; // Matches app layout
         final height = MediaQuery.of(context).size.height * 0.6;
 
         return Dialog(
           backgroundColor: AppColors.secondary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           child: SizedBox(
             width: width,
             height: height,
@@ -2236,7 +2670,8 @@ void _showAddEditCategoryDialog(
                   padding: const EdgeInsets.all(12),
                   child: Text(
                     category.categoryName,
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w500),
                   ),
                 ),
                 const Divider(height: 1, thickness: 0.5),
@@ -2260,7 +2695,8 @@ void _showAddEditCategoryDialog(
                     padding: const EdgeInsets.all(8.0),
                     child: TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Luk', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text('Luk',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ),
