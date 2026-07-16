@@ -135,7 +135,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             title: Row(
               children: [
                 Icon(existingCoupon == null ? Icons.add_circle : Icons.edit,
-                    color: AppColors.primary),
+                    color: AppColors.darkGreen),
                 const SizedBox(width: 12),
                 Text(
                   existingCoupon == null ? 'Tilføj Kupon' : 'Rediger Kupon',
@@ -217,7 +217,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onPrimary,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   padding:
@@ -295,7 +295,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
-            prefixIcon: Icon(icon, size: 20, color: AppColors.primary),
+            prefixIcon: Icon(icon, size: 20, color: AppColors.darkGreen),
             filled: true,
             fillColor: Colors.white,
             contentPadding:
@@ -310,7 +310,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary, width: 2),
+              borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
             ),
           ),
           style: GoogleFonts.kanit(fontSize: 15),
@@ -352,16 +352,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       backgroundColor: AppColors.scaffoldGradientStart,
       body: CustomScrollView(
         slivers: [
-          SliverAppBar(
-            title: Text('Rejsedetaljer',
-                style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.homeGradientStart)),
-            backgroundColor: AppColors.navActive,
-            iconTheme: const IconThemeData(color: AppColors.homeGradientStart),
-            pinned: true,
-            elevation: 2,
-          ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -403,7 +393,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               style: GoogleFonts.kanit()),
                           value: _flightAway,
                           onChanged: (val) => setState(() => _flightAway = val),
-                          activeThumbColor: AppColors.primary,
+                          activeThumbColor: AppColors.darkGreen,
                         ),
                         SwitchListTile(
                           title: Text(
@@ -411,7 +401,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               style: GoogleFonts.kanit()),
                           value: _flightHome,
                           onChanged: (val) => setState(() => _flightHome = val),
-                          activeThumbColor: AppColors.primary,
+                          activeThumbColor: AppColors.darkGreen,
                         ),
                       ],
                     ),
@@ -445,8 +435,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         backgroundColor: AppColors.primary,
         label: Text('Gem Ændringer',
             style: GoogleFonts.kanit(
-                fontWeight: FontWeight.bold, color: Colors.white)),
-        icon: const Icon(Icons.save, color: Colors.white),
+                fontWeight: FontWeight.bold, color: AppColors.onPrimary)),
+        icon: Icon(Icons.save, color: AppColors.onPrimary),
       ),
     );
   }
@@ -519,9 +509,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     imageUrl: coupon.imageURL,
                     fit: BoxFit.contain,
                     errorWidget: (context, url, error) =>
-                        Icon(Icons.local_offer, color: AppColors.primary),
+                        Icon(Icons.local_offer, color: AppColors.darkGreen),
                   )
-                : Icon(Icons.local_offer, color: AppColors.primary),
+                : Icon(Icons.local_offer, color: AppColors.darkGreen),
           ),
         ),
         title: Text(
@@ -563,7 +553,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 value: 'edit',
                 child: Row(
                   children: [
-                    Icon(Icons.edit, size: 20, color: AppColors.primary),
+                    Icon(Icons.edit, size: 20, color: AppColors.darkGreen),
                     const SizedBox(width: 12),
                     Text('Rediger', style: GoogleFonts.kanit()),
                   ],

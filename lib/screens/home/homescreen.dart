@@ -15,22 +15,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeline_tile/timeline_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:backend/widget/agencyLogo.dart';
 import 'package:backend/widget/timelineeventbox.dart';
-import '../../blocs/groupinformation/groupinformation_bloc.dart';
 import '../../widget/timelineDialog.dart';
 import '../../widget/departurebox2.dart';
 import '../../widget/returnbox2.dart';
+import '../../blocs/groupinformation/groupinformation_bloc.dart';
 
 class HomeScreen extends StatefulWidget {
   static const String routeName = '/home';
@@ -346,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.onPrimary,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
@@ -424,28 +422,6 @@ class _HomeScreenState extends State<HomeScreen> {
           return Scaffold(
             extendBodyBehindAppBar: true,
             backgroundColor: Colors.white,
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              backgroundColor: AppColors.navActive,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              title: Center(
-                child: state is GroupInformationLoaded
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 20, bottom: 10),
-                        child: SizedBox(
-                          height: 80,
-                          child: Hero(
-                            tag: 'agencyLogo_${state.groupInformation.groupId}',
-                            child: AgencyLogo(
-                                agencyCode: state.groupInformation.agencyCode),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              centerTitle: true,
-            ),
             body: _buildBody(context, state),
           );
         },
@@ -656,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               },
               backgroundColor: AppColors.primary,
-              child: const Icon(Icons.add, color: Colors.white),
+              child: Icon(Icons.add, color: AppColors.onPrimary),
             ),
           ),
       ],
@@ -760,7 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
               heroTag: 'messages_fab_${groupInfo.groupId}',
               onPressed: () => _showCreateMessageDialog(context, groupInfo),
               backgroundColor: AppColors.primary,
-              child: const Icon(Icons.add, color: Colors.white),
+              child: Icon(Icons.add, color: AppColors.onPrimary),
             ),
           ),
         ],
@@ -1011,8 +987,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             // Folder Item
                             final folder = _currentFolders[index];
                             return ListTile(
-                              leading:
-                                  Icon(Icons.folder, color: AppColors.primary),
+                              leading: Icon(Icons.folder,
+                                  color: AppColors.darkGreen),
                               title: Text(folder.name,
                                   overflow: TextOverflow.ellipsis),
                               onTap: () => _navigateToFolder(folder),
@@ -1114,7 +1090,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
                 backgroundColor: AppColors.primary,
-                child: const Icon(Icons.add, color: Colors.white),
+                child: Icon(Icons.add, color: AppColors.onPrimary),
               ),
             ),
         ],
@@ -1298,7 +1274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontSize: 20, fontWeight: FontWeight.w500),
                       ),
                       IconButton(
-                        icon: Icon(Icons.send, color: AppColors.primary),
+                        icon: Icon(Icons.send, color: AppColors.darkGreen),
                         onPressed: () async {
                           if (selectedEmails.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1704,10 +1680,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 },
                 backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.email, color: Colors.white),
+                icon: Icon(Icons.email, color: AppColors.onPrimary),
                 label: Text(
                   "Send e-mail",
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppColors.onPrimary),
                 ),
               ),
             ),
@@ -1760,9 +1736,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 groupInfo: groupInfo,
                 guide: null,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.add,
-                color: Colors.white,
+                color: AppColors.onPrimary,
               ),
             ),
           ),
@@ -1883,9 +1859,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 groupInfo: groupInfo,
                 member: null, // ✅ null means adding a new member
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.add,
-                color: Colors.white,
+                color: AppColors.onPrimary,
               ),
             ),
           ),
@@ -2405,7 +2381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
                 backgroundColor: AppColors.primary,
-                child: const Icon(Icons.add, color: Colors.white),
+                child: Icon(Icons.add, color: AppColors.onPrimary),
               ),
             ),
         ],
@@ -2466,7 +2442,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Row(
                         children: [
                           Icon(Icons.library_books,
-                              color: AppColors.primary, size: 28),
+                              color: AppColors.darkGreen, size: 28),
                           const SizedBox(width: 12),
                           Text(
                             'Vælg fra bibliotek',
@@ -2517,7 +2493,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         : Colors.white,
                                     border: Border.all(
                                       color: isSelected
-                                          ? AppColors.primary
+                                          ? AppColors.darkGreen
                                           : Colors.grey.shade200,
                                       width: isSelected ? 2 : 1,
                                     ),
@@ -2539,7 +2515,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       'mdi-folder') ??
                                               MdiIcons.folder,
                                           color: isSelected
-                                              ? Colors.white
+                                              ? AppColors.onPrimary
                                               : Colors.grey.shade600,
                                           size: 20,
                                         ),
@@ -2571,7 +2547,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                       if (isSelected)
                                         Icon(Icons.check_circle,
-                                            color: AppColors.primary)
+                                            color: AppColors.darkGreen)
                                       else
                                         Icon(Icons.circle_outlined,
                                             color: Colors.grey.shade300),
@@ -2632,7 +2608,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Text(
                                 'Tilføj ${selectedIndices.isNotEmpty ? '(${selectedIndices.length})' : ''}',
                                 style: GoogleFonts.kanit(
-                                    color: Colors.white,
+                                    color: AppColors.onPrimary,
                                     fontWeight: FontWeight.w600)),
                           ),
                         ],

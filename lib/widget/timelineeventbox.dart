@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import '../blocs/groupinformation/groupinformation_bloc.dart';
 import 'timelineDialog.dart'; // Import for date formatting
 
@@ -74,23 +75,27 @@ class TimelineEventBox extends StatelessWidget {
                   Positioned.fill(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10.0),
-                      child: Image.network(
-                        processedUrl,
+                      child: CachedNetworkImage(
+                        imageUrl: processedUrl,
                         fit: BoxFit.cover,
-                        color: Colors.black.withOpacity(0.2),
-                        colorBlendMode: BlendMode.darken,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          print(
-                              'Error loading image: $error\nStacktrace: $stackTrace');
+                        placeholder: (context, url) =>
+                            const Center(child: CircularProgressIndicator()),
+                        errorWidget: (context, url, error) {
+                          print('Error loading image: $error');
                           return const Center(
                               child:
                                   Icon(Icons.broken_image, color: Colors.grey));
                         },
+                      ),
+                    ),
+                  ),
+                // Overlay for darkening the image
+                if (isValidUrl)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10.0),
+                        color: Colors.black.withOpacity(0.2),
                       ),
                     ),
                   ),

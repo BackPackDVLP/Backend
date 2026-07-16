@@ -304,7 +304,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
             title: Row(
               children: [
                 Icon(offer == null ? Icons.add_circle : Icons.edit,
-                    color: AppColors.primary),
+                    color: AppColors.darkGreen),
                 const SizedBox(width: 12),
                 Text(
                   offer == null ? 'Opret Tilbud' : 'Rediger Tilbud',
@@ -424,7 +424,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onPrimary,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   padding:
@@ -484,7 +484,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
-            prefixIcon: Icon(icon, size: 20, color: AppColors.primary),
+            prefixIcon: Icon(icon, size: 20, color: AppColors.darkGreen),
             filled: true,
             fillColor: Colors.white,
             contentPadding:
@@ -499,7 +499,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary, width: 2),
+              borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
             ),
           ),
           style: GoogleFonts.kanit(fontSize: 15),
@@ -525,7 +525,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
             AndroidUiSettings(
               toolbarTitle: 'Beskær billede',
               toolbarColor: AppColors.primary,
-              toolbarWidgetColor: Colors.white,
+              toolbarWidgetColor: AppColors.onPrimary,
               initAspectRatio: CropAspectRatioPreset.ratio4x3,
               lockAspectRatio: true,
             ),
@@ -537,8 +537,8 @@ class _TimelineDialogState extends State<TimelineDialog> {
               context: context,
               presentStyle: WebPresentStyle.dialog,
               size: const CropperSize(
-                width: 520,
-                height: 520,
+                width: 480,
+                height: 480,
               ),
               customDialogBuilder: (cropper, init, crop, rotate, scale) {
                 return StatefulBuilder(builder: (context, setState) {
@@ -549,72 +549,79 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   return Dialog(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Beskær & Zoom',
-                                  style: GoogleFonts.kanit(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold)),
-                              IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => Navigator.of(context).pop()),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: 500,
-                            height: 350,
-                            child: ClipRect(child: cropper),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.zoom_out,
-                                  size: 20, color: Colors.grey),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
-                                child: Text('Zoom ud/ind herover',
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.5,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Beskær & Zoom',
                                     style: GoogleFonts.kanit(
-                                        color: Colors.grey, fontSize: 13)),
-                              ),
-                              const Icon(Icons.zoom_in,
-                                  size: 20, color: Colors.grey),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  child: Text('Annuller',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold)),
+                                IconButton(
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () =>
+                                        Navigator.of(context).pop()),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: 450,
+                              height: 250,
+                              child: ClipRect(child: cropper),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.zoom_out,
+                                    size: 20, color: Colors.grey),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                  child: Text('Zoom ud/ind herover',
                                       style: GoogleFonts.kanit(
-                                          color: Colors.red))),
-                              const SizedBox(width: 10),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  final result = await crop();
-                                  if (context.mounted) {
-                                    Navigator.of(context).pop(result);
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary),
-                                child: Text('Beskær',
-                                    style:
-                                        GoogleFonts.kanit(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        ],
+                                          color: Colors.grey, fontSize: 13)),
+                                ),
+                                const Icon(Icons.zoom_in,
+                                    size: 20, color: Colors.grey),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    child: Text('Annuller',
+                                        style: GoogleFonts.kanit(
+                                            color: Colors.red))),
+                                const SizedBox(width: 10),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final result = await crop();
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop(result);
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primary),
+                                  child: Text('Beskær',
+                                      style: GoogleFonts.kanit(
+                                          color: AppColors.onPrimary)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -919,11 +926,11 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: () => _addOrEditOffer(),
-                        child: const Text('Opret tilbud',
+                        child: Text('Opret tilbud',
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w300,
-                                color: Colors.white)),
+                                color: AppColors.onPrimary)),
                       ),
                     ],
                   ),
@@ -962,10 +969,10 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                   fit: BoxFit.cover,
                                   errorWidget: (context, url, error) => Icon(
                                       Icons.local_offer,
-                                      color: AppColors.primary),
+                                      color: AppColors.darkGreen),
                                 )
                               : Icon(Icons.local_offer,
-                                  color: AppColors.primary),
+                                  color: AppColors.darkGreen),
                         ),
                       ),
                       title: Text(
@@ -1011,7 +1018,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               child: Row(
                                 children: [
                                   Icon(Icons.edit,
-                                      size: 20, color: AppColors.primary),
+                                      size: 20, color: AppColors.darkGreen),
                                   const SizedBox(width: 12),
                                   Text('Rediger', style: GoogleFonts.kanit()),
                                 ],
@@ -1056,10 +1063,10 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         onPressed: _saveChanges,
                         child: Text(
                             isEditing ? 'Gem ændringer' : 'Opret begivenhed',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w300,
-                                color: Colors.white)),
+                                color: AppColors.onPrimary)),
                       ),
                     ),
                   ],
@@ -1100,7 +1107,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
             ),
             child: Icon(
               entry.value,
-              color: isSelected ? Colors.white : Colors.grey.shade600,
+              color: isSelected ? AppColors.onPrimary : Colors.grey.shade600,
               size: 20,
             ),
           ),
@@ -1314,7 +1321,7 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
                                                       horizontal: 8),
                                               child: Row(children: [
                                                 Icon(Icons.folder,
-                                                    color: AppColors.primary,
+                                                    color: AppColors.darkGreen,
                                                     size: 20),
                                                 const SizedBox(width: 8),
                                                 Expanded(

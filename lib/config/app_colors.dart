@@ -5,9 +5,14 @@ class AppColors {
   static const Color beige = Color(0xFFFAFAFA); // Off-white
   static const Color brown = Color(0xFF455A64); // Professional Blue Grey
   static const Color darkGreen = Color(0xFF263238); // Dark Slate
-  
+  static const Color brandBeige = Color(0xFFE6D8C6); // BackPack brand beige
+
   // Main Theme
-  static Color primary = brown;
+  static Color primary = brandBeige;
+  // Readable foreground for content placed on top of `primary` fills
+  // (buttons, FABs, toolbars) — primary is a light beige, so white text
+  // there would be invisible.
+  static Color onPrimary = darkGreen;
   
   static Color fromHex(String hexString) {
     final buffer = StringBuffer();

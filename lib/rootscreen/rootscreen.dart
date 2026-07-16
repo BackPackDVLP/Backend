@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:backend/blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:backend/config/app_colors.dart';
-import 'package:backend/repositories/groupInformation/groupInformation_repository.dart' show GroupInformationRepository;
+import 'package:backend/repositories/groupInformation/groupInformation_repository.dart'
+    show GroupInformationRepository;
 import 'package:backend/screens/group_selection_screen/group_selection_screen.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,7 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:backend/widget/agencyLogo.dart';
 // Import your screens here:
 import 'package:backend/screens/home/homescreen.dart';
 import 'package:backend/screens/details/detailsscreen.dart';
@@ -29,7 +32,7 @@ class _RootScreenState extends State<RootScreen> {
   int _selectedIndex = 1; // Set to 1 for 'Oversigt'/'Hjem' on load
   bool _isNavbarVisible = true;
   Timer? _hideTimer;
-  
+
   @override
   void initState() {
     super.initState();
@@ -59,15 +62,19 @@ class _RootScreenState extends State<RootScreen> {
       _selectedIndex = index;
     });
 
-    if (index == 1 || index == 2) { // 'Oversigt' or 'Detaljer' tapped
+    if (index == 1 || index == 2) {
+      // 'Oversigt' or 'Detaljer' tapped
       _pageController.animateToPage(
-        index - 1, // Animate to the corresponding page (0 for Home, 1 for Details)
+        index -
+            1, // Animate to the corresponding page (0 for Home, 1 for Details)
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-    } else if (index == 0) { // 'Skift Rejse' tapped
+    } else if (index == 0) {
+      // 'Skift Rejse' tapped
       _handleChangeGroup();
-    } else if (index == 3) { // 'Log ud' tapped
+    } else if (index == 3) {
+      // 'Log ud' tapped
       _handleLogout();
     }
     HapticFeedback.selectionClick();
@@ -78,8 +85,8 @@ class _RootScreenState extends State<RootScreen> {
     if (currentState is GroupInformationLoaded) {
       // Dispatch event to load all groups for the current agency.
       // The BlocListener below will handle the navigation.
-      context.read<GroupInformationBloc>().add(
-          LoadGroupsByAgency(agencyCode: currentState.groupInformation.agencyCode));
+      context.read<GroupInformationBloc>().add(LoadGroupsByAgency(
+          agencyCode: currentState.groupInformation.agencyCode));
     }
   }
 
@@ -124,8 +131,8 @@ class _RootScreenState extends State<RootScreen> {
       pages = [
         HomeScreen(scrollController: _scrollController),
         GroupDetailsScreen(
-            groupId: groupInfoState.groupInformation.groupId,
-            repository: context.read<GroupInformationRepository>(),
+          groupId: groupInfoState.groupInformation.groupId,
+          repository: context.read<GroupInformationRepository>(),
         ),
       ];
     } else {
@@ -153,69 +160,26 @@ class _RootScreenState extends State<RootScreen> {
       child: LayoutBuilder(builder: (context, constraints) {
         // Use a sidebar for wider screens (laptops/desktops)
         if (constraints.maxWidth > 640) {
+          final Color agencyColor = AppColors.navActive;
           return Scaffold(
+            appBar: AppBar(
+              backgroundColor: AppColors.navActive,
+              elevation: 0,
+              centerTitle: true,
+              automaticallyImplyLeading: false,
+              title: _buildAppBarTitle(groupInfoState),
+            ),
             body: Row(
               children: [
-                NavigationRail(
-                  selectedIndex: _selectedIndex < 3 ? _selectedIndex : null,
-                  onDestinationSelected: (int index) {
-                    _onItemTapped(index);
-                  },
-                  labelType: NavigationRailLabelType.all,
-                  backgroundColor: AppColors.panelBackground,
-                  trailing: Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 20.0),
-                        child: TextButton(
-                          onPressed: () => _onItemTapped(3),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.logout, color: Colors.red, size: 24),
-                              SizedBox(height: 4),
-                              Text(
-                                'Log ud',
-                                style: TextStyle(color: Colors.red, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  destinations: <NavigationRailDestination>[
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.list_outlined),
-                      selectedIcon: Icon(Icons.list, color: AppColors.navActive,),
-                      label: const Text('Forside'),
-                    ),
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home, color: AppColors.navActive),
-                      label: const Text('Oversigt'),
-                    ),
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.info_outline),
-                      selectedIcon: Icon(Icons.info, color: AppColors.navActive),
-                      label: const Text('Detaljer'),
-                    ),
-                  ],
-                ),
+                _buildSideMenu(agencyColor),
                 const VerticalDivider(thickness: 1, width: 1),
                 // This is the main content.
-                Expanded(child: PageView(
+                Expanded(
+                    child: PageView(
                   controller: _pageController,
                   children: pages,
-                  onPageChanged: (pageIndex) => setState(() => _selectedIndex = pageIndex + 1),
+                  onPageChanged: (pageIndex) =>
+                      setState(() => _selectedIndex = pageIndex + 1),
                 )),
               ],
             ),
@@ -237,7 +201,8 @@ class _RootScreenState extends State<RootScreen> {
                     controller: _pageController,
                     children: pages,
                     onPageChanged: (index) {
-                      setState(() => _selectedIndex = index + 1); // Map PageView index (0, 1) to nav index (1, 2)
+                      setState(() => _selectedIndex = index +
+                          1); // Map PageView index (0, 1) to nav index (1, 2)
                       if (_scrollController.hasClients) {
                         _scrollController.jumpTo(0);
                       }
@@ -290,6 +255,76 @@ class _RootScreenState extends State<RootScreen> {
     );
   }
 
+  Widget _buildSideMenu(Color agencyColor) {
+    return Container(
+      width: 213,
+      color: Colors.white,
+      child: Column(
+        children: [
+          const SizedBox(height: 40),
+          _buildMenuOption('Rejser', Icons.flight, 0, agencyColor),
+          _buildMenuOption('Oversigt', Icons.home, 1, agencyColor),
+          _buildMenuOption('Detaljer', Icons.info, 2, agencyColor),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: OutlinedButton.icon(
+              onPressed: () => _onItemTapped(3),
+              icon: const Icon(Icons.logout),
+              label: const Text('Log ud'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(45),
+                foregroundColor: Colors.red[700],
+                side: BorderSide(color: Colors.red[700]!),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuOption(
+      String title, IconData icon, int index, Color agencyColor) {
+    // For specific tabs, we need to map _selectedIndex which is 1-based for PageView (1=Home, 2=Details)
+    // index 0 is 'Rejser' (Switch Group)
+    // index 1 is 'Oversigt' (Home)
+    // index 2 is 'Detaljer' (Details)
+    final isSelected = _selectedIndex == index;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: isSelected ? agencyColor : Colors.grey[700],
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.kanit(
+            color: isSelected ? agencyColor : Colors.black87,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            fontSize: 16,
+          ),
+        ),
+        tileColor: isSelected ? agencyColor.withOpacity(0.1) : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        onTap: () => _onItemTapped(index),
+      ),
+    );
+  }
+
   Widget _buildNavItem(IconData icon, String label, int index) {
     final bool isSelected = _selectedIndex == index;
     final Color activeColor = AppColors.navActive;
@@ -321,5 +356,29 @@ class _RootScreenState extends State<RootScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildAppBarTitle(GroupInformationState state) {
+    if (_selectedIndex == 1 && state is GroupInformationLoaded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 10),
+        child: SizedBox(
+          height: 40,
+          child: Hero(
+            tag: 'agencyLogo_${state.groupInformation.groupId}',
+            child: AgencyLogo(agencyCode: state.groupInformation.agencyCode),
+          ),
+        ),
+      );
+    } else if (_selectedIndex == 2) {
+      return Text(
+        'Rejsedetaljer',
+        style: GoogleFonts.kanit(
+          fontWeight: FontWeight.bold,
+          color: AppColors.homeGradientStart,
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }

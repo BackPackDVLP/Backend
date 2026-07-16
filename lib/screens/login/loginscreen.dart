@@ -1,7 +1,7 @@
+import 'package:backend/config/app_colors.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
   static const String routeName = '/login';
@@ -24,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -100,6 +101,39 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  InputDecoration _fieldDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+      prefixIcon: Icon(icon, color: AppColors.darkGreen, size: 20),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: AppColors.chipBackground,
+      contentPadding:
+          const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: AppColors.darkGreen, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.redAccent, width: 1.2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,111 +142,159 @@ class _LoginScreenState extends State<LoginScreen> {
           FocusScope.of(context).unfocus();
         },
         child: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/images/BackgroundV2.jpg'),
-              fit: BoxFit.cover,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.darkGreen, AppColors.brown],
             ),
           ),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 32),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'BackPack',
-                          style: GoogleFonts.kanit(
-                            color: Colors.white,
-                            fontSize: 64,
-                            fontWeight: FontWeight.bold,
-                            shadows: const [
-                              Shadow(
-                                blurRadius: 10.0,
-                                color: Colors.black45,
-                                offset: Offset(2.0, 2.0),
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/images/BackPack.png',
+                        width: 400,
+                        fit: BoxFit.contain,
+                      ),
+       
+                      Text(
+                        'Ruten til dit eventyr – samlet ét sted',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 15,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 30,
+                              offset: const Offset(0, 15),
+                            ),
+                          ],
+                        ),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Log ind',
+                                style: TextStyle(
+                                  color: AppColors.darkGreen,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Indtast dine oplysninger for at fortsætte',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                style: TextStyle(color: AppColors.darkGreen),
+                                decoration: _fieldDecoration(
+                                  label: 'Email',
+                                  icon: Icons.mail_outline,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Please enter your email';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _passwordController,
+                                style: TextStyle(color: AppColors.darkGreen),
+                                decoration: _fieldDecoration(
+                                  label: 'Password',
+                                  icon: Icons.lock_outline,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      color: Colors.grey[500],
+                                      size: 20,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _obscurePassword = !_obscurePassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                                obscureText: _obscurePassword,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter your password';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 28),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: AppColors.onPrimary,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  onPressed: !_isLoading
+                                      ? _signInWithEmailAndPassword
+                                      : null,
+                                  child: _isLoading
+                                      ? SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.4,
+                                            color: AppColors.onPrimary,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Login',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        Text(
-                          'Ruten til dit eventyr – samlet ét sted',
-                          style: GoogleFonts.kanit(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 50),
-                        TextFormField(
-                          style: const TextStyle(color: Colors.white),
-                          controller: _emailController,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            labelStyle: TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Nothing You Could Do',
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          style: const TextStyle(color: Colors.white),
-                          controller: _passwordController,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            labelStyle: TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Nothing You Could Do',
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          obscureText: true,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your password';
-                            }
-                            return null;
-                          },
-                        ),
-                        
-                        const SizedBox(height: 30),
-                        ElevatedButton(
-                          onPressed: !_isLoading
-                              ? _signInWithEmailAndPassword
-                              : null,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : Text(
-                                  'Login',
-                                  style: GoogleFonts.kanit(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),

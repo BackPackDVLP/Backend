@@ -605,7 +605,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   Widget _buildSideMenu(Color primaryColor, AgencyInformation agencyInfo,
       {bool isDrawer = false}) {
     final menuContent = Container(
-      width: 250,
+      width: 266,
       color: Colors.white,
       child: Column(
         children: [
@@ -1859,7 +1859,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primary, width: 2),
+          borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
         ),
         filled: true,
         fillColor: Colors.grey[50],
@@ -1984,8 +1984,8 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
               context: context,
               presentStyle: WebPresentStyle.dialog,
               size: const CropperSize(
-                width: 520,
-                height: 520,
+                width: 480,
+                height: 480,
               ),
               customDialogBuilder: (cropper, init, crop, rotate, scale) {
                 return StatefulBuilder(builder: (context, setState) {
@@ -1996,72 +1996,79 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                   return Dialog(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Beskær & Zoom',
-                                  style: GoogleFonts.kanit(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold)),
-                              IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => Navigator.of(context).pop()),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: 500,
-                            height: 350,
-                            child: ClipRect(child: cropper),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.zoom_out,
-                                  size: 20, color: Colors.grey),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
-                                child: Text('Zoom ud/ind herover',
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.5,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Beskær & Zoom',
                                     style: GoogleFonts.kanit(
-                                        color: Colors.grey, fontSize: 13)),
-                              ),
-                              const Icon(Icons.zoom_in,
-                                  size: 20, color: Colors.grey),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  child: Text('Annuller',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold)),
+                                IconButton(
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () =>
+                                        Navigator.of(context).pop()),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: 450,
+                              height: 250,
+                              child: ClipRect(child: cropper),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.zoom_out,
+                                    size: 20, color: Colors.grey),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                  child: Text('Zoom ud/ind herover',
                                       style: GoogleFonts.kanit(
-                                          color: Colors.red))),
-                              const SizedBox(width: 10),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  final result = await crop();
-                                  if (context.mounted) {
-                                    Navigator.of(context).pop(result);
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: widget.mainColor),
-                                child: Text('Beskær',
-                                    style:
-                                        GoogleFonts.kanit(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        ],
+                                          color: Colors.grey, fontSize: 13)),
+                                ),
+                                const Icon(Icons.zoom_in,
+                                    size: 20, color: Colors.grey),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    child: Text('Annuller',
+                                        style: GoogleFonts.kanit(
+                                            color: Colors.red))),
+                                const SizedBox(width: 10),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final result = await crop();
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop(result);
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: widget.mainColor),
+                                  child: Text('Beskær',
+                                      style: GoogleFonts.kanit(
+                                          color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -2972,7 +2979,7 @@ class _PackingListCategoryDialogState
 
   @override
   Widget build(BuildContext context) {
-    final themeColor = widget.color ?? AppColors.primary;
+    final themeColor = widget.color ?? AppColors.darkGreen;
     return Dialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -3495,7 +3502,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                         : 'Oprettes som en almindelig rejse.'),
                     value: _isTemplate,
                     onChanged: (val) => setState(() => _isTemplate = val),
-                    activeColor: AppColors.primary,
+                    activeColor: AppColors.darkGreen,
                     secondary: Icon(_isTemplate
                         ? Icons.copy_all_outlined
                         : Icons.flight_takeoff),
@@ -3513,7 +3520,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
         ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.onPrimary,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
@@ -3889,7 +3896,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                         : 'Oprettes som en almindelig rejse.'),
                     value: _isTemplate,
                     onChanged: (val) => setState(() => _isTemplate = val),
-                    activeColor: AppColors.primary,
+                    activeColor: AppColors.darkGreen,
                     secondary: Icon(_isTemplate
                         ? Icons.copy_all_outlined
                         : Icons.flight_takeoff),
@@ -3907,7 +3914,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
+            foregroundColor: AppColors.onPrimary,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),

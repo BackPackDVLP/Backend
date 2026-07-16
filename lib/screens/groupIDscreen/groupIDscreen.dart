@@ -1,3 +1,4 @@
+import 'package:backend/config/app_colors.dart';
 import 'package:backend/rootscreen/rootscreen.dart';
 import 'package:backend/screens/group_selection_screen/group_selection_screen.dart';
 import 'package:flutter/material.dart';
@@ -112,10 +113,11 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/BackgroundV2.jpg'),
-            fit: BoxFit.cover,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.darkGreen, AppColors.brown],
           ),
         ),
         child: BlocListener<GroupInformationBloc, GroupInformationState>(
@@ -161,131 +163,146 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
               }
             }
           },
-          child: Center(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'BackPack',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 64,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              const Shadow(
-                                blurRadius: 10.0,
-                                color: Colors.black45,
-                                offset: Offset(2.0, 2.0),
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/images/BackPack.png',
+                        width: 400,
+                        fit: BoxFit.contain,
+                      ),
+                      Text(
+                        'Ruten til dit eventyr – samlet ét sted',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 15,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 30,
+                              offset: const Offset(0, 15),
+                            ),
+                          ],
+                        ),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              StreamBuilder<User?>(
+                                stream: FirebaseAuth.instance.authStateChanges(),
+                                builder: (context, snapshot) {
+                                  final displayName =
+                                      snapshot.data?.displayName ?? 'Bruger';
+                                  return Text(
+                                    'Hej $displayName',
+                                    style: TextStyle(
+                                      color: AppColors.darkGreen,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Indtast din bureau-kode for at fortsætte',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              TextFormField(
+                                controller: _agencyCodeController,
+                                style: TextStyle(color: AppColors.darkGreen),
+                                decoration: InputDecoration(
+                                  labelText: 'Bureau-kode',
+                                  labelStyle: TextStyle(
+                                      color: Colors.grey[600], fontSize: 14),
+                                  prefixIcon: Icon(Icons.confirmation_number_outlined,
+                                      color: AppColors.darkGreen, size: 20),
+                                  filled: true,
+                                  fillColor: AppColors.chipBackground,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 16, horizontal: 16),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                        color: AppColors.darkGreen, width: 1.5),
+                                  ),
+                                  errorBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                        color: Colors.redAccent, width: 1.2),
+                                  ),
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Indtast venligst en bureau-kode';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 28),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: AppColors.onPrimary,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    if (_formKey.currentState!.validate()) {
+                                      context.read<GroupInformationBloc>().add(
+                                            LoadGroupsByAgency(
+                                              agencyCode:
+                                                  _agencyCodeController.text,
+                                            ),
+                                          );
+                                    }
+                                  },
+                                  child: const Text('Fortsæt',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16)),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        Text(
-                          'Ruten til dit eventyr – samlet ét sted',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 50),
-                        StreamBuilder<User?>(
-                          stream: FirebaseAuth.instance.authStateChanges(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData && snapshot.data != null) {
-                              String displayName =
-                                  snapshot.data!.displayName ?? 'Bruger';
-
-                              return Align(
-                                alignment: Alignment.centerLeft,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 20.0),
-                                  child: Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: "Hej ",
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                        TextSpan(
-                                          text: displayName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const TextSpan(text: '\n'),
-                                        TextSpan(
-                                          text: "Indtast din bureau-kode her:",
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.w400),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            } else {
-                              return const SizedBox.shrink();
-                            }
-                          },
-                        ),
-                        TextFormField(
-                          controller: _agencyCodeController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                              labelText: 'Bureau-kode',
-                              labelStyle: TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'Nothing You Could Do',
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              enabledBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.white),
-                              ),
-                              focusedBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Colors.white),
-                              )),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Indtast venligst en bureau-kode';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () async {
-                            if (_formKey.currentState!.validate()) {
-                              context.read<GroupInformationBloc>().add(
-                                    LoadGroupsByAgency(
-                                      agencyCode: _agencyCodeController.text,
-                                    ),
-                                  );
-                            }
-                          },
-                          child: const Text('Jeg er klar!',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black)),
-                        ),
-                        const SizedBox(height: 50),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
