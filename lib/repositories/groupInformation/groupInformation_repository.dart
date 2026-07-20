@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:backend/models/group_members_model.dart';
 import 'package:backend/models/guide_model.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -68,12 +69,22 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
 
   // ----------------- Messages -----------------
 
-  Future<void> createMessage(String groupId, String title, String content) async {
+  Future<void> createMessage(String groupId, String title, String content,
+      String authorId, String authorName,
+      {List<Map<String, String>> attachments = const [],
+      bool isAdmin = false,
+      String? bureauName}) async {
     try {
       final newMessage = {
         'title': title,
         'content': content,
+        'authorId': authorId,
+        'authorName': authorName,
         'timestamp': FieldValue.serverTimestamp(),
+        'attachments': attachments,
+        'isRead': isAdmin,
+        'isAdmin': isAdmin,
+        if (bureauName != null) 'bureauName': bureauName,
       };
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
       await groupRef.collection('messages').add(newMessage);
@@ -83,7 +94,8 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-  Future<void> updateMessage(String groupId, String messageId, String title, String content) async {
+  Future<void> updateMessage(String groupId, String messageId, String title,
+      String content, {List<Map<String, String>>? attachments}) async {
     try {
       final messageRef = _firebaseFirestore
           .collection('groups')
@@ -93,7 +105,7 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
       await messageRef.update({
         'title': title,
         'content': content,
-        'timestamp': FieldValue.serverTimestamp(),
+        if (attachments != null) 'attachments': attachments,
       });
     } catch (e) {
       throw Exception('Failed to update message: $e');
@@ -127,6 +139,185 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
             snapshot.docs.map((doc) => Message.fromSnapshot(doc)).toList());
   }
 
+  // ----------------- Admin cross-group inbox -----------------
+
+  Stream<List<GroupMessage>> streamAllGroupMessages(List<String> groupIds) {
+    final idSet = groupIds.toSet();
+    return _firebaseFirestore.collectionGroup('messages').snapshots().map((snapshot) {
+      final messages = snapshot.docs
+          .where((doc) => idSet.contains(doc.reference.parent.parent?.id))
+          .map((doc) {
+        final groupId = doc.reference.parent.parent?.id ?? '';
+        final data = doc.data();
+        return GroupMessage(
+          groupId: groupId,
+          messageId: doc.id,
+          title: data['title'] as String? ?? '',
+          content: data['content'] as String? ?? '',
+          authorName: data['authorName'] as String? ?? 'Anonym',
+          timestamp: (data['timestamp'] as Timestamp?)?.toDate(),
+          isRead: data['isRead'] as bool? ?? true,
+          attachments: (data['attachments'] as List<dynamic>?)
+                  ?.map((e) => Map<String, String>.from(e as Map))
+                  .toList() ??
+              [],
+        );
+      }).toList();
+      messages.sort((a, b) {
+        if (a.timestamp == null && b.timestamp == null) return 0;
+        if (a.timestamp == null) return 1;
+        if (b.timestamp == null) return -1;
+        return b.timestamp!.compareTo(a.timestamp!);
+      });
+      return messages;
+    });
+  }
+
+  Stream<int> streamUnreadMessageCount(List<String> groupIds) {
+    final idSet = groupIds.toSet();
+    return _firebaseFirestore.collectionGroup('messages').snapshots().map((snapshot) =>
+        snapshot.docs.where((doc) {
+          if (!idSet.contains(doc.reference.parent.parent?.id)) return false;
+          return doc.data()['isRead'] == false;
+        }).length);
+  }
+
+  Future<void> markMessageAsRead(String groupId, String messageId) async {
+    await _firebaseFirestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('messages')
+        .doc(messageId)
+        .update({'isRead': true});
+  }
+
+  // ----------------- Comments & replies -----------------
+
+  Future<void> createComment(String groupId, String messageId, String content,
+      String authorId, String authorName,
+      {bool isAdmin = false, String? bureauName}) async {
+    try {
+      await _firebaseFirestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .collection('comments')
+          .add({
+        'content': content,
+        'authorId': authorId,
+        'authorName': authorName,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isAdmin': isAdmin,
+        if (bureauName != null) 'bureauName': bureauName,
+      });
+    } catch (e) {
+      throw Exception('Failed to create comment: $e');
+    }
+  }
+
+  Stream<List<Comment>> getComments(String groupId, String messageId) {
+    return _firebaseFirestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('messages')
+        .doc(messageId)
+        .collection('comments')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Comment.fromSnapshot(doc)).toList());
+  }
+
+  Future<void> updateComment(String groupId, String messageId,
+      String commentId, String newContent) async {
+    try {
+      await _firebaseFirestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .collection('comments')
+          .doc(commentId)
+          .update({'content': newContent});
+    } catch (e) {
+      throw Exception('Failed to update comment: $e');
+    }
+  }
+
+  Future<void> deleteComment(
+      String groupId, String messageId, String commentId) async {
+    try {
+      await _firebaseFirestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .collection('comments')
+          .doc(commentId)
+          .delete();
+    } catch (e) {
+      throw Exception('Failed to delete comment: $e');
+    }
+  }
+
+  // Nested replies to a specific comment.
+  Future<void> createReply(String groupId, String messageId, String commentId,
+      String content, String authorId, String authorName) async {
+    try {
+      await _firebaseFirestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .collection('comments')
+          .doc(commentId)
+          .collection('replies')
+          .add({
+        'content': content,
+        'authorId': authorId,
+        'authorName': authorName,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to create reply: $e');
+    }
+  }
+
+  Stream<List<Comment>> getReplies(
+      String groupId, String messageId, String commentId) {
+    return _firebaseFirestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('messages')
+        .doc(messageId)
+        .collection('comments')
+        .doc(commentId)
+        .collection('replies')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Comment.fromSnapshot(doc)).toList());
+  }
+
+  Future<void> deleteReply(String groupId, String messageId, String commentId,
+      String replyId) async {
+    try {
+      await _firebaseFirestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .collection('comments')
+          .doc(commentId)
+          .collection('replies')
+          .doc(replyId)
+          .delete();
+    } catch (e) {
+      throw Exception('Failed to delete reply: $e');
+    }
+  }
+
   // ----------------- Documents -----------------
 
   Future<String> uploadDocument(String groupId, File file) async {
@@ -141,6 +332,23 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
       throw Exception('Failed to upload document: $e');
+    }
+  }
+
+  /// Bytes-based upload (works on web and native alike) used for message
+  /// attachments, picked via FilePicker with `withData: true`.
+  Future<String> uploadMessageAttachment(
+      String groupId, String fileName, Uint8List bytes) async {
+    try {
+      final storageRef = _firebaseStorage
+          .ref()
+          .child('groups/$groupId/messageAttachments/'
+              '${DateTime.now().millisecondsSinceEpoch}_$fileName');
+      final uploadTask = storageRef.putData(bytes);
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      throw Exception('Failed to upload attachment: $e');
     }
   }
 
@@ -217,6 +425,16 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     } catch (e) {
       throw Exception('Failed to fetch groups for agency: $e');
     }
+  }
+
+  // ----------------- Stats -----------------
+
+  Stream<int> streamUserCount(String agencyCode) {
+    return _firebaseFirestore
+        .collection('users')
+        .where('agencyCode', isEqualTo: agencyCode)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
   }
 
   // ----------------- Packing List -----------------

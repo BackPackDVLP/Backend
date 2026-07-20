@@ -10,83 +10,82 @@ class DepartureBox2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final isToday = information.departureDate.year == now.year &&
+        information.departureDate.month == now.month &&
+        information.departureDate.day == now.day;
+    final hasDeparted = information.departureDate.isBefore(now);
+
+    final String headline;
+    if (isToday) {
+      headline = 'Rejsen starter i dag';
+    } else if (hasDeparted) {
+      final days = (now.difference(information.departureDate).inDays + 1).abs();
+      headline = 'Gruppen har rejst i $days dage';
+    } else {
+      final days = information.departureDate.difference(now).inDays + 1;
+      headline = 'Rejsen starter om $days dage';
+    }
+
+    final String subtitle;
+    if (hasDeparted || isToday) {
+      subtitle = 'Rejsen startede i ${information.departureFrom}';
+    } else {
+      subtitle = information.flightAway == false
+          ? 'Rejsen starter i ${information.departureFrom}'
+          : 'Gruppen rejser fra ${information.departureFrom}';
+    }
+
     return Padding(
-      padding: const EdgeInsets.only(right: 8.0, bottom: 8, left: 0, top: 15),
-      child: Stack(
-        children: [
-          Container(
-            height: 150,
-            width: MediaQuery.of(context).size.width * 0.9,
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: AppColors.panelBackground,
-              borderRadius: BorderRadius.circular(10.0),
-              //border: Border.all(color: Colors.black, width: 0.5),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  spreadRadius: 5,
-                  blurRadius: 7,
-                  offset: const Offset(0, 3), // Adjust for position of shadow
-                )
-              ],
-              image: const DecorationImage(
-                image: AssetImage(
-                    'assets/images/worldmap.png'), // Replace with your image path
-                fit: BoxFit.contain,
-                opacity: 0.3,
-                // Overlay a dark filter
+      padding: const EdgeInsets.only(right: 8.0, bottom: 8, top: 15),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.flight_takeoff, color: AppColors.primary, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    headline,
+                    style: GoogleFonts.kanit(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.kanit(fontSize: 13, color: Colors.black54),
+                  ),
+                ],
               ),
             ),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(10.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (information.departureDate.year == DateTime.now().year &&
-                        information.departureDate.month ==
-                            DateTime.now().month &&
-                        information.departureDate.day == DateTime.now().day)
-                      Text('Rejsen starter i dag',
-                          style: GoogleFonts.kanit(
-                              fontSize: 20, fontWeight: FontWeight.w300))
-                    else if (information.departureDate.isBefore(DateTime.now()))
-                      Text(
-                          'Gruppen har rejst i ${(DateTime.now().difference(information.departureDate).inDays + 1).abs().toString()} dage',
-                          style: GoogleFonts.kanit(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w300,
-                          ))
-                    else
-                      Text(
-                          'Rejsen starter om ${(information.departureDate.difference(DateTime.now()).inDays+1).toString()} dage',
-                          style: GoogleFonts.kanit(
-                              fontSize: 20, fontWeight: FontWeight.w300)),
-                    if ((information.departureDate.isBefore(DateTime.now())) ||
-                        (information.departureDate.year ==
-                                DateTime.now().year &&
-                            information.departureDate.month ==
-                                DateTime.now().month &&
-                            information.departureDate.day ==
-                                DateTime.now().day))
-                      Text('Rejsen startede i ${information.departureFrom}')
-                    else
-                      Text(
-                          information.flightAway == false
-                              ? 'Rejsen starter i ${information.departureFrom}'
-                              : 'Gruppen rejser fra ${information.departureFrom}',
-                          style: GoogleFonts.kanit(
-                              fontSize: 14, fontWeight: FontWeight.w200)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          
-         
-        
-        ],
+          ],
+        ),
       ),
     );
   }

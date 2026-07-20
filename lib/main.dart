@@ -4,7 +4,6 @@ import 'package:backend/config/app_router.dart';
 import 'package:backend/firebase_options.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart'; // Import GroupIDScreen
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
-import 'package:backend/screens/group_selection_screen/group_selection_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,7 +14,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login/loginscreen.dart';
 
 @pragma('vm:entry-point')
@@ -179,7 +177,7 @@ class MyApp extends StatelessWidget {
               if (snapshot.connectionState == ConnectionState.active) {
                 // User is logged in
                 if (snapshot.data != null) {
-                  return const StartupScreen();
+                  return const GroupIDScreen();
                 } else {
                   // User is not logged in
                   return const LoginScreen();
@@ -196,56 +194,4 @@ class MyApp extends StatelessWidget {
       ),
     );
     }
-}
-
-class StartupScreen extends StatefulWidget {
-  const StartupScreen({super.key});
-
-  @override
-  State<StartupScreen> createState() => _StartupScreenState();
-}
-
-class _StartupScreenState extends State<StartupScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _determineRoute();
-  }
-
-  Future<void> _determineRoute() async {
-    final prefs = await SharedPreferences.getInstance();
-    final agencyCode = prefs.getString('lastEnteredAgencyCode');
-
-    if (!mounted) return;
-
-    if (agencyCode != null) {
-      context.read<GroupInformationBloc>().add(
-            LoadGroupsByAgency(agencyCode: agencyCode),
-          );
-    } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const GroupIDScreen()),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocListener<GroupInformationBloc, GroupInformationState>(
-      listener: (context, state) {
-        if (state is GroupsByAgencyLoaded) {
-          Navigator.of(context).pushReplacement(
-            GroupSelectionScreen.route(groups: state.groups),
-          );
-        } else if (state is GroupInformationError) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const GroupIDScreen()),
-          );
-        }
-      },
-      child: const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
-    );
-  }
 }

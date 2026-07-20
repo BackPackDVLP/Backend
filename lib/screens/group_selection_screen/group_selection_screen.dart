@@ -1,12 +1,18 @@
 import 'package:backend/models/agencyInformation.dart';
+import 'package:backend/screens/group_selection_screen/dashboard_screen.dart';
+import 'package:backend/screens/group_selection_screen/users_screen.dart';
+import 'package:backend/screens/group_selection_screen/team_screen.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/packinglist_model.dart';
 import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/widget/backgroundVideo.dart';
+import 'package:backend/widget/bureauLogoHeader.dart';
 import 'package:backend/blocs/groupinformation/groupinformation_bloc.dart';
-import 'package:backend/rootscreen/rootscreen.dart';
+import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
+import 'package:backend/screens/home/homescreen.dart';
+import 'package:backend/screens/details/detailsscreen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,10 +32,15 @@ import 'dart:io';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 
 enum SideMenuItem {
+  dashboard,
   groups,
+  groupOverview,
+  groupDetails,
   templates,
   photoLibrary,
   packingList,
+  users,
+  team,
   settings,
 }
 
@@ -56,7 +67,9 @@ class GroupSelectionScreen extends StatefulWidget {
 
 class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   late List<GroupInformation> _groups;
-  SideMenuItem _selectedMenuItem = SideMenuItem.groups;
+  SideMenuItem _selectedMenuItem = SideMenuItem.dashboard;
+  GroupInformation? _selectedGroup;
+  final ScrollController _scrollController = ScrollController();
   bool _isGridView = false; // Default to ListView
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -78,6 +91,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -347,11 +361,10 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     return BlocListener<GroupInformationBloc, GroupInformationState>(
       listener: (context, state) {
         if (state is GroupInformationLoaded) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const RootScreen()),
-            (route) => false,
-          );
+          setState(() {
+            _selectedGroup = state.groupInformation;
+            _selectedMenuItem = SideMenuItem.groupOverview;
+          });
         } else if (state is GroupInformationError) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.message)),
@@ -381,21 +394,31 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                     isDesktop ? null : _buildSideMenu(appBarColor, agencyInfo),
                 appBar: AppBar(
                   centerTitle: true,
+                  toolbarHeight: 72,
                   title: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        agencyInfo.agencyName,
-                        style: GoogleFonts.kanit(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.homeGradientStart,
-                            fontSize: 22),
+                      Padding(
+                        padding: const EdgeInsets.all(0.5),
+                        child: BureauLogoHeader(
+                          agencyCode: agencyCode,
+                          fallbackText: agencyInfo.agencyName,
+                          height: 58,
+                        ),
                       ),
+                      
                       Text(
                         switch (_selectedMenuItem) {
+                          SideMenuItem.dashboard => 'Dashboard',
                           SideMenuItem.groups => 'Rejseoversigt',
+                          SideMenuItem.groupOverview => 'Oversigt',
+                          SideMenuItem.groupDetails => 'Detaljer',
                           SideMenuItem.templates => 'Skabeloner',
                           SideMenuItem.photoLibrary => 'Fotobibliotek',
                           SideMenuItem.packingList => 'Pakkelister',
+                          SideMenuItem.users => 'Brugere',
+                          SideMenuItem.team => 'Team',
                           SideMenuItem.settings => 'Indstillinger',
                         },
                         style: GoogleFonts.kanit(
@@ -414,21 +437,8 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                             _selectedMenuItem == SideMenuItem.templates)
                     ? FloatingActionButton(
                         backgroundColor: AppColors.navActive,
-                        onPressed: () {
-                          showDialog<GroupInformation>(
-                            context: context,
-                            builder: (context) => _AddGroupDialog(
-                              bureauName: agencyInfo.agencyName,
-                              agencyCode: agencyCode,
-                            ),
-                          ).then((newGroup) {
-                            if (newGroup != null) {
-                              setState(() {
-                                _groups.add(newGroup);
-                              });
-                            }
-                          });
-                        },
+                        onPressed: () =>
+                            _openAddGroupDialog(context, agencyInfo, agencyCode),
                         child: const Icon(Icons.add, color: Colors.white),
                       )
                     : null,
@@ -473,6 +483,23 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     );
   }
 
+  void _openAddGroupDialog(
+      BuildContext context, AgencyInformation agencyInfo, String agencyCode) {
+    showDialog<GroupInformation>(
+      context: context,
+      builder: (context) => _AddGroupDialog(
+        bureauName: agencyInfo.agencyName,
+        agencyCode: agencyCode,
+      ),
+    ).then((newGroup) {
+      if (newGroup != null) {
+        setState(() {
+          _groups.add(newGroup);
+        });
+      }
+    });
+  }
+
   Widget _buildMainContent({
     required Color appBarColor,
     required String agencyCode,
@@ -481,7 +508,25 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     required List<GroupInformation> displayedGroups,
     required bool isDesktop,
   }) {
-    if (_selectedMenuItem == SideMenuItem.photoLibrary) {
+    if (_selectedMenuItem == SideMenuItem.dashboard) {
+      return DashboardScreen(
+        groups: _groups,
+        agencyCode: agencyCode,
+        mainColor: appBarColor,
+        onNavigateToGroups: () => setState(() => _selectedMenuItem = SideMenuItem.groups),
+        onNavigateToUsers: () => setState(() => _selectedMenuItem = SideMenuItem.users),
+        onNavigateToTeam: () => setState(() => _selectedMenuItem = SideMenuItem.team),
+        onSelectGroup: (group) => _selectGroup(context, group),
+        onCreateGroup: () => _openAddGroupDialog(context, agencyInfo, agencyCode),
+      );
+    } else if (_selectedMenuItem == SideMenuItem.groupOverview && _selectedGroup != null) {
+      return HomeScreen(scrollController: _scrollController);
+    } else if (_selectedMenuItem == SideMenuItem.groupDetails && _selectedGroup != null) {
+      return GroupDetailsScreen(
+        groupId: _selectedGroup!.groupId,
+        repository: context.read<GroupInformationRepository>(),
+      );
+    } else if (_selectedMenuItem == SideMenuItem.photoLibrary) {
       return AgencyImagesScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
@@ -489,6 +534,18 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       );
     } else if (_selectedMenuItem == SideMenuItem.packingList) {
       return PackingListLibraryScreen(
+        agencyCode: agencyCode,
+        mainColor: appBarColor,
+        isNested: true,
+      );
+    } else if (_selectedMenuItem == SideMenuItem.users) {
+      return UsersScreen(
+        agencyCode: agencyCode,
+        mainColor: appBarColor,
+        isNested: true,
+      );
+    } else if (_selectedMenuItem == SideMenuItem.team) {
+      return TeamScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
         isNested: true,
@@ -613,22 +670,27 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             DrawerHeader(
               decoration: BoxDecoration(color: primaryColor),
               child: Center(
-                child: Text(agencyInfo.agencyName,
-                    style: GoogleFonts.kanit(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold)),
+                child: BureauLogoHeader(
+                  agencyCode: agencyInfo.agencyCode,
+                  fallbackText: agencyInfo.agencyName,
+                  height: 72,
+                ),
               ),
             ),
           if (!isDrawer) const SizedBox(height: 20),
-          _buildMenuOption('Rejser', Icons.flight, SideMenuItem.groups,
+          _buildMenuOption('Dashboard', Icons.space_dashboard, SideMenuItem.dashboard,
               primaryColor, agencyInfo, isDrawer),
+          _buildRejserMenuSection(primaryColor, agencyInfo, isDrawer),
           _buildMenuOption('Skabeloner', Icons.copy_all, SideMenuItem.templates,
               primaryColor, agencyInfo, isDrawer),
           _buildMenuOption('Fotobibliotek', Icons.photo_library,
               SideMenuItem.photoLibrary, primaryColor, agencyInfo, isDrawer),
           _buildMenuOption('Pakkelister', Icons.checklist,
               SideMenuItem.packingList, primaryColor, agencyInfo, isDrawer),
+          _buildMenuOption('Brugere', Icons.people, SideMenuItem.users,
+              primaryColor, agencyInfo, isDrawer),
+          _buildMenuOption('Team', Icons.badge, SideMenuItem.team,
+              primaryColor, agencyInfo, isDrawer),
           _buildMenuOption('Indstillinger', Icons.settings,
               SideMenuItem.settings, primaryColor, agencyInfo, isDrawer),
           const Spacer(),
@@ -668,6 +730,95 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         tileColor: isSelected ? agencyColor.withOpacity(0.1) : null,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        onTap: () {
+          setState(() => _selectedMenuItem = item);
+          if (isDrawer && mounted) Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
+  /// "Rejser" doubles as the trips list and, once a trip is selected, the
+  /// parent of an Oversigt/Detaljer submenu — tapping it again while a trip
+  /// is open collapses back to the list instead of navigating away.
+  Widget _buildRejserMenuSection(
+      Color primaryColor, AgencyInformation agencyInfo, bool isDrawer) {
+    final agencyColor = AppColors.fromHex(agencyInfo.mainColor);
+    final isInGroupView = _selectedMenuItem == SideMenuItem.groupOverview ||
+        _selectedMenuItem == SideMenuItem.groupDetails;
+    final isRejserActive = _selectedMenuItem == SideMenuItem.groups || isInGroupView;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: ListTile(
+            leading: Icon(Icons.flight,
+                color: isRejserActive ? agencyColor : Colors.grey[700]),
+            title: Text('Rejser',
+                style: GoogleFonts.kanit(
+                  color: isRejserActive ? agencyColor : Colors.black87,
+                  fontWeight: isRejserActive ? FontWeight.w600 : FontWeight.normal,
+                )),
+            trailing: _selectedGroup != null
+                ? Icon(Icons.expand_less, size: 18, color: Colors.grey[500])
+                : null,
+            tileColor: isRejserActive && !isInGroupView
+                ? agencyColor.withOpacity(0.1)
+                : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+            onTap: () {
+              setState(() {
+                _selectedGroup = null;
+                _selectedMenuItem = SideMenuItem.groups;
+              });
+              if (isDrawer && mounted) Navigator.pop(context);
+            },
+          ),
+        ),
+        if (_selectedGroup != null) ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 32, right: 16, top: 2, bottom: 2),
+            child: Text(
+              _selectedGroup!.groupName ?? _selectedGroup!.groupId,
+              style: GoogleFonts.kanit(
+                fontSize: 11,
+                color: Colors.grey[500],
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          _buildSubMenuOption(
+              'Oversigt', Icons.home, SideMenuItem.groupOverview, agencyColor, isDrawer),
+          _buildSubMenuOption('Detaljer', Icons.info_outline, SideMenuItem.groupDetails,
+              agencyColor, isDrawer),
+          const SizedBox(height: 4),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSubMenuOption(String title, IconData icon, SideMenuItem item,
+      Color agencyColor, bool isDrawer) {
+    final isSelected = _selectedMenuItem == item;
+    return Container(
+      margin: const EdgeInsets.only(left: 24, right: 8, top: 2, bottom: 2),
+      child: ListTile(
+        leading: Icon(icon, color: isSelected ? agencyColor : Colors.grey[600], size: 20),
+        title: Text(title,
+            style: GoogleFonts.kanit(
+              fontSize: 14,
+              color: isSelected ? agencyColor : Colors.black87,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            )),
+        tileColor: isSelected ? agencyColor.withOpacity(0.1) : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        dense: true,
         onTap: () {
           setState(() => _selectedMenuItem = item);
           if (isDrawer && mounted) Navigator.pop(context);

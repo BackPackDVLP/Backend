@@ -10,10 +10,12 @@ class AppColors {
   // Main Theme
   static Color primary = brandBeige;
   // Readable foreground for content placed on top of `primary` fills
-  // (buttons, FABs, toolbars) — primary is a light beige, so white text
-  // there would be invisible.
-  static Color onPrimary = darkGreen;
-  
+  // (buttons, FABs, toolbars). `primary` is replaced at runtime with each
+  // agency's own brand color, which can be light or dark, so this must be
+  // computed from it rather than fixed to one value.
+  static Color get onPrimary =>
+      primary.computeLuminance() < 0.5 ? Colors.white : Colors.black;
+
   static Color fromHex(String hexString) {
     final buffer = StringBuffer();
     if (hexString.length == 6 || hexString.length == 7) buffer.write('ff');

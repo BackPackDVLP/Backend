@@ -78,6 +78,19 @@ class TimelineEventBox extends StatelessWidget {
                       child: CachedNetworkImage(
                         imageUrl: processedUrl,
                         fit: BoxFit.cover,
+                        // The box only ever renders at ~375x150 logical
+                        // pixels, but source photos can be full-resolution
+                        // camera shots (10+ MP). Without capping the decode
+                        // size, every one of these in the timeline decodes
+                        // at full resolution into memory, which is what
+                        // makes scrolling a long timeline janky.
+                        memCacheWidth:
+                            (375 * MediaQuery.of(context).devicePixelRatio)
+                                .round(),
+                        memCacheHeight:
+                            (150 * MediaQuery.of(context).devicePixelRatio)
+                                .round(),
+                        fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (context, url) =>
                             const Center(child: CircularProgressIndicator()),
                         errorWidget: (context, url, error) {

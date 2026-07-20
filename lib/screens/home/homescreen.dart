@@ -420,11 +420,206 @@ class _HomeScreenState extends State<HomeScreen> {
       child: BlocBuilder<GroupInformationBloc, GroupInformationState>(
         builder: (context, state) {
           return Scaffold(
-            extendBodyBehindAppBar: true,
-            backgroundColor: Colors.white,
-            body: _buildBody(context, state),
+            backgroundColor: Colors.transparent,
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.scaffoldGradientStart,
+                    AppColors.scaffoldGradientEnd,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0.0, 0.5],
+                ),
+              ),
+              child: _buildBody(context, state),
+            ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildHeroHeader(GroupInformation groupInfo) {
+    final now = DateTime.now();
+    final daysUntil = groupInfo.departureDate.difference(now).inDays;
+    final isActive = groupInfo.departureDate.isBefore(now) &&
+        groupInfo.returnDate.isAfter(now);
+    final countdownText = isActive
+        ? 'Rejsen er i gang'
+        : daysUntil >= 0
+            ? 'Afrejse om $daysUntil dage'
+            : 'Rejse afsluttet';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.card_travel, color: AppColors.primary, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  groupInfo.groupName ?? groupInfo.groupId,
+                  style: GoogleFonts.kanit(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${DateFormat('dd. MMM yyyy', 'da_DK').format(groupInfo.departureDate)} '
+                  '– ${DateFormat('dd. MMM yyyy', 'da_DK').format(groupInfo.returnDate)}',
+                  style: GoogleFonts.kanit(fontSize: 13, color: Colors.black45),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _buildHeroChip(Icons.people_outline, '${groupInfo.members.length}'),
+          const SizedBox(width: 8),
+          _buildHeroChip(Icons.support_agent, '${groupInfo.guides.length}'),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: (isActive ? Colors.orange : AppColors.primary)
+                  .withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              countdownText,
+              style: GoogleFonts.kanit(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isActive ? Colors.orange[800] : AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroChip(IconData icon, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.grey[700]),
+          const SizedBox(width: 5),
+          Text(value,
+              style: GoogleFonts.kanit(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  /// Shared card chrome for the four dashboard-style panels below —
+  /// white card, soft shadow, rounded corners, icon-in-circle header.
+  BoxDecoration get _panelDecoration => BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      );
+
+  Widget _buildPanelHeader(IconData icon, String title, {Widget? leading}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Row(
+        children: [
+          if (leading != null) leading,
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(title,
+                style: GoogleFonts.kanit(
+                    fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    VoidCallback? onTap,
+    Widget? trailing,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 18),
+        ),
+        title: Text(title,
+            style: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 14),
+            overflow: TextOverflow.ellipsis),
+        subtitle: subtitle != null
+            ? Text(subtitle,
+                style: GoogleFonts.kanit(fontSize: 11, color: Colors.grey[500]))
+            : null,
+        onTap: onTap,
+        trailing: trailing,
       ),
     );
   }
@@ -458,41 +653,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (!isNarrow) {
             return SafeArea(
-              child: Row(
+              child: Column(
                 children: [
-                  Flexible(
-                    flex: 3,
-                    child: _buildTimeline(context, groupInfo, sortableEvents),
-                  ),
-                  Flexible(
-                    flex: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        children: [
-                          Expanded(
-                              child: _buildMessagesPanel(
-                                  context, groupInfo, user)),
-                          const SizedBox(height: 8),
-                          Expanded(child: _buildGroupPanel(context, groupInfo)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Flexible(
-                    flex: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        children: [
-                          Expanded(
-                              child: _buildDocumentsPanel(context, groupInfo)),
-                          const SizedBox(height: 8),
-                          Expanded(
-                              child:
-                                  _buildPackingListPanel(context, groupInfo)),
-                        ],
-                      ),
+                  _buildHeroHeader(groupInfo),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          flex: 3,
+                          child: _buildTimeline(context, groupInfo, sortableEvents),
+                        ),
+                        Flexible(
+                          flex: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                    child: _buildMessagesPanel(
+                                        context, groupInfo, user)),
+                                const SizedBox(height: 8),
+                                Expanded(child: _buildGroupPanel(context, groupInfo)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Flexible(
+                          flex: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                    child: _buildDocumentsPanel(context, groupInfo)),
+                                const SizedBox(height: 8),
+                                Expanded(
+                                    child:
+                                        _buildPackingListPanel(context, groupInfo)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -505,6 +707,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(8.0),
                 child: Column(
                   children: [
+                    _buildHeroHeader(groupInfo),
+                    const SizedBox(height: 8),
                     SizedBox(
                       height: 300,
                       child: _buildMessagesPanel(context, groupInfo, user),
@@ -542,14 +746,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTimeline(BuildContext context, GroupInformation groupInfo,
       List<dynamic> sortableEvents) {
     final user = FirebaseAuth.instance.currentUser;
-    return Stack(
-      children: [
-        Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: widget.scrollController,
-                itemCount: sortableEvents.length,
+    return Container(
+      margin: const EdgeInsets.all(8),
+      decoration: _panelDecoration,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              _buildPanelHeader(Icons.timeline, 'Rejseforløb'),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  controller: widget.scrollController,
+                  itemCount: sortableEvents.length,
                 itemBuilder: (context, index) {
                   final itemData = sortableEvents[index];
                   final item = itemData['item'];
@@ -635,7 +845,8 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Icon(Icons.add, color: AppColors.onPrimary),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -644,27 +855,14 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- MESSAGES PANEL ---
   Widget _buildMessagesPanel(
       BuildContext context, GroupInformation groupInfo, User? user) {
-    return Card(
-      elevation: 10,
-      color: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    return Container(
+      decoration: _panelDecoration,
       clipBehavior: Clip.antiAlias, // Important for FAB to be contained
       child: Stack(
         children: [
           Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Beskeder',
-                        style: const TextStyle(
-                            fontSize: 21, fontWeight: FontWeight.w300)),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, thickness: 0.5),
+              _buildPanelHeader(Icons.forum_outlined, 'Beskeder'),
               Expanded(
                 child: StreamBuilder<List<Message>>(
                   stream: _messagesStream,
@@ -674,53 +872,79 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                     final messages = snapshot.data ?? [];
                     if (messages.isEmpty) {
-                      return const Center(child: Text('Ingen beskeder.'));
+                      return Center(
+                        child: Text('Ingen beskeder.',
+                            style: GoogleFonts.kanit(color: Colors.grey[500])),
+                      );
                     }
 
                     return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 72),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final msg = messages[index];
-                        return ListTile(
-                          title: Text(msg.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Column(
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(msg.title,
+                                        style: GoogleFonts.kanit(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black87),
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  if (user?.emailVerified ?? false)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(Icons.edit,
+                                              size: 18, color: Colors.grey[600]),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () => _showEditMessageDialog(
+                                              context, groupInfo, msg),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete,
+                                              size: 18, color: Colors.redAccent),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () => _removeMessage(
+                                              context, groupInfo.groupId, msg),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
                               Text(msg.content,
-                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  style: GoogleFonts.kanit(
+                                      fontSize: 13, color: Colors.black54, height: 1.4),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
                               if (msg.timestamp != null) ...[
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
                                 Text(
                                   DateFormat('dd/MM/yyyy HH:mm')
                                       .format(msg.timestamp!),
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color.fromARGB(255, 0, 0, 0)),
+                                  style: GoogleFonts.kanit(
+                                      fontSize: 11, color: Colors.grey[500]),
                                 ),
                               ],
                             ],
                           ),
-                          trailing: (user?.emailVerified ?? false)
-                              ? Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit,
-                                          color: Colors.black),
-                                      onPressed: () => _showEditMessageDialog(
-                                          context, groupInfo, msg),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red),
-                                      onPressed: () => _removeMessage(
-                                          context, groupInfo.groupId, msg),
-                                    ),
-                                  ],
-                                )
-                              : null,
                         );
                       },
                     );
@@ -941,72 +1165,66 @@ class _HomeScreenState extends State<HomeScreen> {
     final isRoot =
         _currentDocsRef?.fullPath == '${groupInfo.groupId}/documents';
 
-    return Card(
-      elevation: 10,
-      color: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    return Container(
+      decoration: _panelDecoration,
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
           Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    if (!isRoot)
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: _navigateBack,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    if (!isRoot) const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        isRoot
-                            ? 'Dokumenter'
-                            : _currentDocsRef?.name ?? 'Dokumenter',
-                        style: const TextStyle(
-                            fontSize: 21, fontWeight: FontWeight.w300),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+              _buildPanelHeader(
+                Icons.folder_outlined,
+                isRoot ? 'Dokumenter' : _currentDocsRef?.name ?? 'Dokumenter',
+                leading: !isRoot
+                    ? Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, size: 20),
+                          onPressed: _navigateBack,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      )
+                    : null,
               ),
-              const Divider(height: 1, thickness: 0.5),
               Expanded(
                 child: _currentFiles.isEmpty && _currentFolders.isEmpty
-                    ? const Center(child: Text('Tom mappe.'))
+                    ? Center(
+                        child: Text('Tom mappe.',
+                            style: GoogleFonts.kanit(color: Colors.grey[500])))
                     : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 72),
                         itemCount:
                             _currentFolders.length + _currentFiles.length,
                         itemBuilder: (context, index) {
                           if (index < _currentFolders.length) {
                             // Folder Item
                             final folder = _currentFolders[index];
-                            return ListTile(
-                              leading: Icon(Icons.folder,
-                                  color: AppColors.darkGreen),
-                              title: Text(folder.name,
-                                  overflow: TextOverflow.ellipsis),
+                            return _buildDocRow(
+                              icon: Icons.folder,
+                              iconColor: AppColors.darkGreen,
+                              title: folder.name,
                               onTap: () => _navigateToFolder(folder),
                               trailing: (user?.emailVerified ?? false)
                                   ? Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(
-                                          icon: const Icon(Icons.edit,
-                                              color: Colors.black),
+                                          icon: Icon(Icons.edit,
+                                              size: 18, color: Colors.grey[600]),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
                                           onPressed: () =>
                                               _showRenameFolderDialog(
                                                   context, folder),
                                           tooltip: 'Omdøb mappe',
                                         ),
+                                        const SizedBox(width: 12),
                                         IconButton(
                                           icon: const Icon(Icons.delete,
-                                              color: Colors.red),
+                                              size: 18, color: Colors.redAccent),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
                                           onPressed: () =>
                                               _showDeleteFolderConfirmationDialog(
                                                   context, folder),
@@ -1021,19 +1239,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             final fileIndex = index - _currentFolders.length;
                             final pdfFile = _currentFiles[fileIndex];
                             final metadata = _fileMetadata[pdfFile.name];
-                            return ListTile(
-                              leading: const Icon(Icons.picture_as_pdf,
-                                  color: Colors.red),
-                              title: Text(pdfFile.name,
-                                  overflow: TextOverflow.ellipsis),
+                            return _buildDocRow(
+                              icon: Icons.picture_as_pdf,
+                              iconColor: Colors.red,
+                              title: pdfFile.name,
                               subtitle: metadata?.timeCreated != null
-                                  ? Text(
-                                      DateFormat('dd/MM/yyyy HH:mm')
-                                          .format(metadata!.timeCreated!),
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color.fromARGB(255, 0, 0, 0)),
-                                    )
+                                  ? DateFormat('dd/MM/yyyy HH:mm')
+                                      .format(metadata!.timeCreated!)
                                   : null,
                               onTap: () async {
                                 String downloadURL =
@@ -1043,7 +1255,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               trailing: (user?.emailVerified ?? false)
                                   ? IconButton(
                                       icon: const Icon(Icons.delete,
-                                          color: Colors.red),
+                                          size: 18, color: Colors.redAccent),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
                                       onPressed: () =>
                                           _showDeleteDocumentConfirmationDialog(
                                               context, pdfFile),
@@ -1129,10 +1343,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             onPressed: () {
               if (title.isNotEmpty && content.isNotEmpty) {
+                final admin = FirebaseAuth.instance.currentUser;
                 context.read<GroupInformationRepository>().createMessage(
                       groupInfo.groupId,
                       title,
                       content,
+                      admin?.uid ?? 'admin',
+                      admin?.displayName ?? admin?.email ?? 'Admin',
+                      isAdmin: true,
+                      bureauName: groupInfo.bureauName,
                     );
                 Navigator.pop(context);
               }
@@ -1619,18 +1838,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // If the group is a template, show a watermark instead of the member/guide lists.
     if (groupInfo.isTemplate == true) {
-      return Card(
-        elevation: 10,
-        color: AppColors.panelBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      return Container(
+        decoration: _panelDecoration,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
               "Der kan ikke tilføjes medlemmer til en skabelon",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 16,
+              style: GoogleFonts.kanit(
+                  fontSize: 15,
                   color: Colors.grey[600],
                   fontStyle: FontStyle.italic),
             ),
@@ -1639,21 +1856,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Card(
-      elevation: 10,
-      color: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    return Container(
+      decoration: _panelDecoration,
+      clipBehavior: Clip.antiAlias,
       child: DefaultTabController(
         length: 2,
         child: Stack(
           children: [
             Column(
               children: [
-                const TabBar(
-                  indicatorColor: Colors.black87,
-                  labelColor: Colors.black,
-                  unselectedLabelColor: Colors.grey,
-                  tabs: [Tab(text: 'Gruppemedlemmer'), Tab(text: 'Guides')],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                  child: TabBar(
+                    indicatorColor: AppColors.primary,
+                    labelColor: AppColors.primary,
+                    unselectedLabelColor: Colors.grey,
+                    labelStyle: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                    unselectedLabelStyle: GoogleFonts.kanit(),
+                    tabs: const [Tab(text: 'Gruppemedlemmer'), Tab(text: 'Guides')],
+                  ),
                 ),
                 Expanded(
                   child: TabBarView(
@@ -1696,27 +1917,35 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildGuidesList(GroupInformation groupInfo) => Stack(
         children: [
           ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
             itemCount: groupInfo.guides.length,
-            itemBuilder: (context, i) => ListTile(
-              leading: const Icon(Icons.support_agent),
-              title: Text(groupInfo.guides[i].name),
-              subtitle: Text('Tel: ${groupInfo.guides[i].phoneNumber}'),
+            itemBuilder: (context, i) => _buildDocRow(
+              icon: Icons.support_agent,
+              iconColor: AppColors.primary,
+              title: groupInfo.guides[i].name,
+              subtitle: 'Tel: ${groupInfo.guides[i].phoneNumber}',
               trailing:
                   (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.black),
+                              icon: Icon(Icons.edit,
+                                  size: 18, color: Colors.grey[600]),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                               onPressed: () => _showAddEditGuideDialog(
                                 context,
                                 groupInfo: groupInfo,
                                 guide: groupInfo.guides[i],
                               ),
                             ),
+                            const SizedBox(width: 12),
                             IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete,
+                                  size: 18, color: Colors.redAccent),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                               onPressed: () => _removeGuide(
                                   context, groupInfo, groupInfo.guides[i]),
                             ),
@@ -1807,16 +2036,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildGroupMembersList(GroupInformation groupInfo) => Stack(
         children: [
           ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
             itemCount: groupInfo.members.length,
-            itemBuilder: (context, i) => ListTile(
-              leading: const Icon(Icons.group_outlined),
-              title: Text(groupInfo.members[i].name),
-              subtitle: Text(
-                groupInfo.members[i].email.isNotEmpty
-                    ? groupInfo.members[i].email
-                    : 'No email',
-              ),
+            itemBuilder: (context, i) => _buildDocRow(
+              icon: Icons.person_outline,
+              iconColor: AppColors.primary,
+              title: groupInfo.members[i].name,
+              subtitle: groupInfo.members[i].email.isNotEmpty
+                  ? groupInfo.members[i].email
+                  : 'No email',
               trailing:
                   (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
                       ? Row(
@@ -1825,19 +2053,27 @@ class _HomeScreenState extends State<HomeScreen> {
                             (groupInfo.members[i].fcmToken != null &&
                                     groupInfo.members[i].fcmToken!.isNotEmpty)
                                 ? const Icon(Icons.smartphone_outlined,
-                                    color: Color.fromARGB(255, 0, 111, 4))
+                                    size: 18, color: Color.fromARGB(255, 0, 111, 4))
                                 : const Icon(Icons.phonelink_erase,
-                                    color: Color.fromARGB(255, 255, 82, 2)),
+                                    size: 18, color: Color.fromARGB(255, 255, 82, 2)),
+                            const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.black),
+                              icon: Icon(Icons.edit,
+                                  size: 18, color: Colors.grey[600]),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                               onPressed: () => _showAddEditMemberDialog(
                                 context,
                                 groupInfo: groupInfo,
                                 member: groupInfo.members[i],
                               ),
                             ),
+                            const SizedBox(width: 12),
                             IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete,
+                                  size: 18, color: Colors.redAccent),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
                               onPressed: () => _removeMember(
                                   context, groupInfo, groupInfo.members[i]),
                             ),
@@ -2287,53 +2523,45 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPackingListPanel(
       BuildContext context, GroupInformation groupInfo) {
     final user = FirebaseAuth.instance.currentUser;
-    return Card(
-      elevation: 10,
-      color: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    return Container(
+      decoration: _panelDecoration,
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
           Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Huskeliste',
-                        style: const TextStyle(
-                            fontSize: 21, fontWeight: FontWeight.w300)),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, thickness: 0.5),
+              _buildPanelHeader(Icons.checklist, 'Huskeliste'),
               Expanded(
                 child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 72),
                   itemCount: groupInfo.packinglistCategories.length,
                   itemBuilder: (context, index) {
                     final category = groupInfo.packinglistCategories[index];
-                    return ListTile(
-                      leading: const Icon(Icons.check_circle_outline,
-                          color: Colors.black),
-                      title: Text(category.categoryName,
-                          style: const TextStyle(fontWeight: FontWeight.w500)),
+                    return _buildDocRow(
+                      icon: Icons.check_circle_outline,
+                      iconColor: AppColors.primary,
+                      title: category.categoryName,
                       onTap: () => _openCategoryDialog(context, category),
                       trailing: (user?.emailVerified ?? false)
                           ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      color: Colors.black),
+                                  icon: Icon(Icons.edit,
+                                      size: 18, color: Colors.grey[600]),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
                                   onPressed: () => _showAddEditCategoryDialog(
                                       context,
                                       groupInfo: groupInfo,
                                       category: category),
                                 ),
+                                const SizedBox(width: 12),
                                 IconButton(
                                   icon: const Icon(Icons.delete,
-                                      color: Colors.red),
+                                      size: 18, color: Colors.redAccent),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
                                   onPressed: () => _removePackingListCategory(
                                       context, groupInfo, category),
                                 ),

@@ -349,17 +349,31 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.scaffoldGradientStart,
-      body: CustomScrollView(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.scaffoldGradientStart,
+              AppColors.scaffoldGradientEnd,
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0.0, 0.5],
+          ),
+        ),
+        child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(20.0),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildTripHeader(),
+                    const SizedBox(height: 24),
                     _buildSectionCard(
                       title: 'Rejseoplysninger',
                       icon: Icons.flight_takeoff,
@@ -429,6 +443,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
         ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saveGroupDetails,
@@ -441,18 +456,95 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
+  Widget _buildTripHeader() {
+    final group = _group!;
+    final now = DateTime.now();
+    final daysUntil = group.departureDate.difference(now).inDays;
+    final isActive =
+        group.departureDate.isBefore(now) && group.returnDate.isAfter(now);
+    final countdownText = isActive
+        ? 'Rejsen er i gang'
+        : daysUntil >= 0
+            ? 'Afrejse om $daysUntil dage'
+            : 'Rejse afsluttet';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: AppColors.darkGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.info_outline, color: AppColors.darkGreen, size: 26),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(group.groupName ?? group.groupId,
+                    style: GoogleFonts.kanit(
+                        fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(group.groupId,
+                    style: GoogleFonts.kanit(fontSize: 13, color: Colors.black45)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: (isActive ? Colors.orange : AppColors.darkGreen).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(countdownText,
+                style: GoogleFonts.kanit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isActive ? Colors.orange[800] : AppColors.darkGreen)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionCard(
       {required String title,
       required IconData icon,
       required List<Widget> children,
       Widget? action}) {
-    return Card(
-      elevation: 4,
-      shadowColor: Colors.black26,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: AppColors.panelBackground,
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -461,17 +553,24 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(icon, color: Colors.black54),
-                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, color: AppColors.darkGreen, size: 20),
+                    ),
+                    const SizedBox(width: 12),
                     Text(title,
                         style: GoogleFonts.kanit(
-                            fontSize: 20, fontWeight: FontWeight.bold)),
+                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ],
                 ),
                 if (action != null) action,
               ],
             ),
-            const Divider(height: 24, thickness: 1),
+            Divider(height: 24, thickness: 1, color: Colors.grey.withValues(alpha: 0.15)),
             ...children,
           ],
         ),
