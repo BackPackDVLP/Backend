@@ -34,6 +34,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   final _emergencyPhoneController = TextEditingController();
   bool _flightAway = false;
   bool _flightHome = false;
+  bool _mapEnabled = false;
   List<String> _beforeDepartureItems = [];
 
   @override
@@ -60,6 +61,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       _emergencyPhoneController.text = group.emergencyPhone ?? '';
       _flightAway = group.flightAway;
       _flightHome = group.flightHome;
+      _mapEnabled = group.mapEnabled;
       _beforeDepartureItems = List.from(group.beforeDepartureItems ?? []);
       _loading = false;
     });
@@ -98,6 +100,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         'emergencyPhone': _emergencyPhoneController.text,
         'flightAway': _flightAway,
         'flightHome': _flightHome,
+        'mapEnabled': _mapEnabled,
       });
 
       // Optionally, reload the main group info in the BLoC
@@ -491,6 +494,26 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               style: GoogleFonts.kanit()),
                           value: _flightHome,
                           onChanged: (val) => setState(() => _flightHome = val),
+                          activeThumbColor: AppColors.darkGreen,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    _buildSectionCard(
+                      title: 'App-funktioner',
+                      icon: Icons.map_outlined,
+                      children: [
+                        SwitchListTile(
+                          title: Text('"Vis kort"-knap',
+                              style: GoogleFonts.kanit()),
+                          subtitle: Text(
+                            _mapEnabled
+                                ? 'Vises på rejsekortet i appen'
+                                : 'Skjult i appen',
+                            style: GoogleFonts.kanit(fontSize: 12),
+                          ),
+                          value: _mapEnabled,
+                          onChanged: (val) => setState(() => _mapEnabled = val),
                           activeThumbColor: AppColors.darkGreen,
                         ),
                       ],

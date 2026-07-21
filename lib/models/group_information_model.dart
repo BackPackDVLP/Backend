@@ -31,6 +31,7 @@ class GroupInformation extends Equatable {
   String? groupName;
   bool? isTemplate;
   final List<String>? beforeDepartureItems;
+  final bool mapEnabled;
 
 
   GroupInformation({
@@ -55,6 +56,7 @@ class GroupInformation extends Equatable {
     this.groupName,
     this.isTemplate,
     this.beforeDepartureItems,
+    this.mapEnabled = false,
   });
 
   factory GroupInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -107,6 +109,7 @@ class GroupInformation extends Equatable {
               .map((item) => item.toString())
               .toList()
           : null,
+      mapEnabled: data['mapEnabled'] ?? false,
     );
   }
 

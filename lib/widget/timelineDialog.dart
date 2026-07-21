@@ -739,7 +739,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     ),
                   ),
                 const SizedBox(height: 16),
-                _buildTextField(typeController, 'Titel'),
+                _buildTextField(typeController, 'Titel', maxLength: 40),
                 _buildTextField(countryController, 'Land, By eller Område'),
                 _buildTextField(descriptionController, 'Beskrivelse',
                     maxLines: 3),
@@ -1180,18 +1180,22 @@ class _TimelineDialogState extends State<TimelineDialog> {
   }
 
   Widget _buildTextField(TextEditingController controller, String label,
-      {int maxLines = 1, TextInputType? keyboardType}) {
+      {int maxLines = 1, TextInputType? keyboardType, int? maxLength}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
+        maxLength: maxLength,
         decoration: InputDecoration(
           labelText: label,
           filled: true,
           fillColor: AppColors.homeGradientStart,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          helperText: maxLength != null
+              ? 'Holdes kort, så det passer på rejsekortet i appen'
+              : null,
         ),
       ),
     );

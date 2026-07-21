@@ -27,9 +27,9 @@ class AppColors {
   static const Color secondary = beige;
   
   // Backgrounds & Gradients
-  static const Color scaffoldGradientStart = Color(0xFFFAF9F6);
-  static const Color homeGradientStart = Color(0xFFFAF9F6);
-  static const Color scaffoldGradientEnd = Color(0xFFFAF9F6);
+  static const Color scaffoldGradientStart = Color(0xFFF6EFE2);
+  static const Color homeGradientStart = Color(0xFFF6EFE2);
+  static const Color scaffoldGradientEnd = Color(0xFFF6EFE2);
   
   // Cards & Panels
   static const Color cardBackground = Color(0xFFF5F5F5);
