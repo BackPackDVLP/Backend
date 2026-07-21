@@ -30,6 +30,7 @@ class GroupInformation extends Equatable {
   final List<Message>? messages;
   String? groupName;
   bool? isTemplate;
+  final List<String>? beforeDepartureItems;
 
 
   GroupInformation({
@@ -52,7 +53,8 @@ class GroupInformation extends Equatable {
     this.flights,
     this.messages,
     this.groupName,
-    this.isTemplate
+    this.isTemplate,
+    this.beforeDepartureItems,
   });
 
   factory GroupInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -99,7 +101,12 @@ class GroupInformation extends Equatable {
               .toList()
           : null,
       groupName: data['groupName'],
-      isTemplate: data['isTemplate']
+      isTemplate: data['isTemplate'],
+      beforeDepartureItems: data['beforeDepartureItems'] != null
+          ? (data['beforeDepartureItems'] as List)
+              .map((item) => item.toString())
+              .toList()
+          : null,
     );
   }
 

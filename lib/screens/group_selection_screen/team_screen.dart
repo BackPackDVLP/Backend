@@ -1,3 +1,4 @@
+import 'package:backend/widget/edit_person_dialog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Agency-scoped view of the admin employees who can log in to this
-/// control panel for this bureau. Invite/remove is owner-only.
+/// control panel for this bureau. Invite/edit/remove is owner-only.
 class TeamScreen extends StatefulWidget {
   final String agencyCode;
   final Color mainColor;
@@ -123,6 +124,44 @@ class _TeamScreenState extends State<TeamScreen> {
     }
   }
 
+  Future<void> _editEmployee(
+    String uid,
+    String currentName,
+    String currentEmail,
+  ) async {
+    final success = await showEditPersonDialog(
+      context,
+      title: 'Rediger medarbejder',
+      subtitle: currentEmail,
+      mainColor: widget.mainColor,
+      initialName: currentName,
+      initialEmail: currentEmail,
+      onSave: (name, _, newEmail) async {
+        try {
+          await FirebaseFunctions.instanceFor(region: 'europe-west1')
+              .httpsCallable('updateEmployee')
+              .call({
+            'uid': uid,
+            'agencyCode': widget.agencyCode,
+            'name': name,
+            'email': newEmail,
+          });
+          return null;
+        } on FirebaseFunctionsException catch (e) {
+          return e.message ?? 'Kunne ikke gemme';
+        } catch (e) {
+          return 'Der skete en fejl';
+        }
+      },
+    );
+
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Medarbejder opdateret')),
+      );
+    }
+  }
+
   Future<void> _removeEmployee(String uid, String email) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -226,15 +265,29 @@ class _TeamScreenState extends State<TeamScreen> {
                         ),
                       ),
                       title: Text(name.isNotEmpty ? name : email,
-                          style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                          style:
+                              GoogleFonts.kanit(fontWeight: FontWeight.w600)),
                       subtitle: Text(
                           '$email · ${role == 'owner' ? 'Ejer' : 'Medarbejder'}'),
-                      trailing: (isOwner && role != 'owner')
-                          ? IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              tooltip: 'Fjern medarbejder',
-                              onPressed: () => _removeEmployee(doc.id, email),
+                      trailing: isOwner
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  tooltip: 'Rediger medarbejder',
+                                  onPressed: () =>
+                                      _editEmployee(doc.id, name, email),
+                                ),
+                                if (role != 'owner')
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: Colors.red),
+                                    tooltip: 'Fjern medarbejder',
+                                    onPressed: () =>
+                                        _removeEmployee(doc.id, email),
+                                  ),
+                              ],
                             )
                           : null,
                     ),
@@ -253,7 +306,9 @@ class _TeamScreenState extends State<TeamScreen> {
       children: [
         Text(title,
             style: GoogleFonts.kanit(
-                fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87)),
         if (trailing != null) trailing,
       ],
     );

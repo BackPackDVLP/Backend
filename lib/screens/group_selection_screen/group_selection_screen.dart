@@ -393,8 +393,9 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 drawer:
                     isDesktop ? null : _buildSideMenu(appBarColor, agencyInfo),
                 appBar: AppBar(
+                  automaticallyImplyLeading: !isDesktop,
                   centerTitle: true,
-                  toolbarHeight: 72,
+                  toolbarHeight: 50,
                   title: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -404,26 +405,11 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                         child: BureauLogoHeader(
                           agencyCode: agencyCode,
                           fallbackText: agencyInfo.agencyName,
-                          height: 58,
+                          height: 40,
                         ),
                       ),
                       
-                      Text(
-                        switch (_selectedMenuItem) {
-                          SideMenuItem.dashboard => 'Dashboard',
-                          SideMenuItem.groups => 'Rejseoversigt',
-                          SideMenuItem.groupOverview => 'Oversigt',
-                          SideMenuItem.groupDetails => 'Detaljer',
-                          SideMenuItem.templates => 'Skabeloner',
-                          SideMenuItem.photoLibrary => 'Fotobibliotek',
-                          SideMenuItem.packingList => 'Pakkelister',
-                          SideMenuItem.users => 'Brugere',
-                          SideMenuItem.team => 'Team',
-                          SideMenuItem.settings => 'Indstillinger',
-                        },
-                        style: GoogleFonts.kanit(
-                            fontSize: 12, color: AppColors.panelBackground),
-                      ),
+                   
                     ],
                   ),
                   backgroundColor: appBarColor,

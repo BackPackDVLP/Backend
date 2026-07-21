@@ -34,6 +34,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   final _emergencyPhoneController = TextEditingController();
   bool _flightAway = false;
   bool _flightHome = false;
+  List<String> _beforeDepartureItems = [];
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       _emergencyPhoneController.text = group.emergencyPhone ?? '';
       _flightAway = group.flightAway;
       _flightHome = group.flightHome;
+      _beforeDepartureItems = List.from(group.beforeDepartureItems ?? []);
       _loading = false;
     });
   }
@@ -340,6 +342,80 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     });
   }
 
+  Future<void> _saveBeforeDepartureItems() async {
+    if (_group == null) return;
+    final groupRef =
+        widget.repository.firestore.collection('groups').doc(_group!.groupId);
+    await groupRef.update({'beforeDepartureItems': _beforeDepartureItems});
+  }
+
+  void _addOrEditPreDepartureItem({String? existing, int? index}) {
+    final controller = TextEditingController(text: existing ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.beige,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(existing == null ? Icons.add_circle : Icons.edit,
+                color: AppColors.darkGreen),
+            const SizedBox(width: 12),
+            Text(
+              existing == null ? 'Tilføj Punkt' : 'Rediger Punkt',
+              style:
+                  GoogleFonts.kanit(fontWeight: FontWeight.bold, fontSize: 22),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: _buildDialogField(
+            controller: controller,
+            label: 'Punkt',
+            hint: 'F.eks. Husk pas og forsikringskort',
+            icon: Icons.checklist_outlined,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                Text('Annuller', style: GoogleFonts.kanit(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            onPressed: () async {
+              if (controller.text.isEmpty) return;
+              setState(() {
+                if (index != null) {
+                  _beforeDepartureItems[index] = controller.text;
+                } else {
+                  _beforeDepartureItems.add(controller.text);
+                }
+              });
+              await _saveBeforeDepartureItems();
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: Text(existing == null ? 'Tilføj' : 'Gem',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePreDepartureItem(int index) async {
+    setState(() => _beforeDepartureItems.removeAt(index));
+    await _saveBeforeDepartureItems();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading || _group == null) {
@@ -417,6 +493,25 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           onChanged: (val) => setState(() => _flightHome = val),
                           activeThumbColor: AppColors.darkGreen,
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    _buildSectionCard(
+                      title: 'Før afrejse',
+                      icon: Icons.checklist,
+                      action: ElevatedButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: const Text('Tilføj'),
+                        onPressed: () => _addOrEditPreDepartureItem(),
+                      ),
+                      children: [
+                        if (_beforeDepartureItems.isEmpty)
+                          const Center(child: Text('Ingen punkter endnu.'))
+                        else
+                          ..._beforeDepartureItems.asMap().entries.map(
+                                (entry) => _buildPreDepartureItemTile(
+                                    entry.value, entry.key),
+                              ),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -572,6 +667,62 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
             Divider(height: 24, thickness: 1, color: Colors.grey.withValues(alpha: 0.15)),
             ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreDepartureItemTile(String item, int index) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        leading: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+              color: AppColors.darkGreen, shape: BoxShape.circle),
+        ),
+        title: Text(item, style: GoogleFonts.kanit(fontSize: 14)),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.black38, size: 18),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          onSelected: (value) {
+            if (value == 'edit') {
+              _addOrEditPreDepartureItem(existing: item, index: index);
+            } else if (value == 'delete') {
+              _deletePreDepartureItem(index);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'edit',
+              child: Row(
+                children: [
+                  Icon(Icons.edit, size: 18, color: AppColors.darkGreen),
+                  const SizedBox(width: 10),
+                  Text('Rediger', style: GoogleFonts.kanit()),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  const Icon(Icons.delete, size: 18, color: Colors.redAccent),
+                  const SizedBox(width: 10),
+                  Text('Slet', style: GoogleFonts.kanit()),
+                ],
+              ),
+            ),
           ],
         ),
       ),

@@ -12,12 +12,14 @@ class BureauLogoHeader extends StatelessWidget {
   final String agencyCode;
   final String fallbackText;
   final double height;
+  final double width;
 
   const BureauLogoHeader({
     super.key,
     required this.agencyCode,
     required this.fallbackText,
-    this.height = 20,
+    this.height = 30,
+    this.width = 200,
   });
 
   static final Map<String, Future<String?>> _urlCache = {};
@@ -59,11 +61,12 @@ class BureauLogoHeader extends StatelessWidget {
         if (url == null) {
           return _buildFallback();
         }
-        return ColorFiltered(
-          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        return Container(
+       //   colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           child: Image.network(
             url,
             height: height,
+            width: width,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) => _buildFallback(),
           ),
