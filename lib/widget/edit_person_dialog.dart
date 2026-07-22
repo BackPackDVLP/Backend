@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:backend/widget/phone_number_field.dart';
 
 /// Shows a styled dialog for editing a name/(optional phone)/email record.
 ///
@@ -19,8 +20,8 @@ Future<bool> showEditPersonDialog(
 }) async {
   final formKey = GlobalKey<FormState>();
   final nameController = TextEditingController(text: initialName);
-  final phoneController =
-      initialPhone != null ? TextEditingController(text: initialPhone) : null;
+  final hasPhoneField = initialPhone != null;
+  String phoneValue = initialPhone ?? '';
   final emailController = TextEditingController(text: initialEmail);
 
   final result = await showDialog<bool>(
@@ -87,16 +88,16 @@ Future<bool> showEditPersonDialog(
                         label: 'Navn',
                         icon: Icons.badge_outlined,
                       ),
-                      if (phoneController != null) ...[
-                        const SizedBox(height: 14),
-                        EditField(
-                          controller: phoneController,
+                      if (hasPhoneField) ...[
+                        const SizedBox(height: 2),
+                        PhoneNumberField(
+                          initialValue: phoneValue,
                           label: 'Telefonnummer',
                           icon: Icons.phone_outlined,
-                          keyboardType: TextInputType.phone,
+                          onChanged: (v) => phoneValue = v,
                         ),
-                      ],
-                      const SizedBox(height: 14),
+                      ] else
+                        const SizedBox(height: 14),
                       EditField(
                         controller: emailController,
                         label: 'Email',
@@ -159,7 +160,7 @@ Future<bool> showEditPersonDialog(
                                     });
                                     final error = await onSave(
                                       nameController.text.trim(),
-                                      phoneController?.text.trim(),
+                                      hasPhoneField ? phoneValue.trim() : null,
                                       emailController.text.trim(),
                                     );
                                     if (error != null) {

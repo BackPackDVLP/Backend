@@ -1,4 +1,5 @@
 import 'package:backend/widget/edit_person_dialog.dart';
+import 'package:backend/widget/phone_number_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -106,7 +107,7 @@ class _UsersScreenState extends State<UsersScreen> {
     if (!context.mounted) return;
 
     final nameController = TextEditingController(text: prefillName);
-    final phoneController = TextEditingController(text: prefillPhone);
+    String phoneValue = prefillPhone;
     final emailController = TextEditingController(text: email);
     final formKey = GlobalKey<FormState>();
     final pendingGroupIds = <String>{};
@@ -162,7 +163,9 @@ class _UsersScreenState extends State<UsersScreen> {
                   'uid': uid,
                   'agencyCode': widget.agencyCode,
                   'name': nameController.text.trim(),
-                  'phoneNumber': int.tryParse(phoneController.text.trim()) ?? 0,
+                  'phoneNumber': int.tryParse(
+                          phoneValue.replaceAll(RegExp(r'[^0-9]'), '')) ??
+                      0,
                   'email': emailController.text.trim(),
                 });
                 if (dialogCtx.mounted) Navigator.pop(dialogCtx, true);
@@ -287,12 +290,12 @@ class _UsersScreenState extends State<UsersScreen> {
                                 label: 'Navn',
                                 icon: Icons.badge_outlined,
                               ),
-                              const SizedBox(height: 14),
-                              EditField(
-                                controller: phoneController,
+                              const SizedBox(height: 2),
+                              PhoneNumberField(
+                                initialValue: phoneValue,
                                 label: 'Telefonnummer',
                                 icon: Icons.phone_outlined,
-                                keyboardType: TextInputType.phone,
+                                onChanged: (v) => phoneValue = v,
                               ),
                               const SizedBox(height: 14),
                               EditField(
@@ -707,7 +710,9 @@ class _UsersScreenState extends State<UsersScreen> {
               .call({
             'agencyCode': widget.agencyCode,
             'name': name,
-            'phoneNumber': int.tryParse(phone ?? '') ?? 0,
+            'phoneNumber': int.tryParse(
+                    (phone ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
+                0,
             'email': email,
           });
           return null;

@@ -72,7 +72,8 @@ class GroupMemberAdapter extends TypeAdapter<GroupMember> {
     return GroupMember(
       name: reader.readString(),
       email: reader.readString(),
-      phoneNumber: reader.readInt(),
+      phoneNumber: reader.readString(),
+      whatsappNumber: reader.readString(),
     );
   }
 
@@ -80,7 +81,8 @@ class GroupMemberAdapter extends TypeAdapter<GroupMember> {
   void write(BinaryWriter writer, GroupMember obj) {
     writer.writeString(obj.name);
     writer.writeString(obj.email);
-    writer.writeInt(obj.phoneNumber);
+    writer.writeString(obj.phoneNumber);
+    writer.writeString(obj.whatsappNumber);
   }
 }
 
@@ -92,13 +94,19 @@ class GuideAdapter extends TypeAdapter<Guide> {
   Guide read(BinaryReader reader) {
     return Guide(
       name: reader.readString(),
-      phoneNumber: reader.readInt(),
+      phoneNumber: reader.readString(),
+      whatsappNumber: reader.readString(),
+      email: reader.readString(),
+      title: reader.readString(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Guide obj) {
     writer.writeString(obj.name);
-    writer.writeInt(obj.phoneNumber);
+    writer.writeString(obj.phoneNumber);
+    writer.writeString(obj.whatsappNumber);
+    writer.writeString(obj.email);
+    writer.writeString(obj.title);
   }
 }

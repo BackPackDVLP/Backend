@@ -363,20 +363,44 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-  Future<void> updateMember(String groupId, GroupMember oldMember, GroupMember newMember) async {
+  // `updateMember`/`deleteMember` used to match the existing array entry by
+  // exact value (arrayRemove/arrayUnion), which silently fails to find a
+  // match for any member saved before a model field changed shape (e.g. an
+  // int phoneNumber migrated to String) — the edit would then just get
+  // appended as a duplicate instead of replacing the original. Replacing by
+  // index inside a transaction sidesteps that entirely.
+  Future<void> updateMember(
+      String groupId, int index, GroupMember newMember) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'members': FieldValue.arrayRemove([oldMember.toMap()])});
-      await groupRef.update({'members': FieldValue.arrayUnion([newMember.toMap()])});
+      await _firebaseFirestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(groupRef);
+        final members = List<Map<String, dynamic>>.from(
+            (snapshot.data()?['members'] as List?) ?? const []);
+        if (index < 0 || index >= members.length) {
+          throw Exception('Member not found at index $index');
+        }
+        members[index] = newMember.toMap();
+        transaction.update(groupRef, {'members': members});
+      });
     } catch (e) {
       throw Exception('Failed to update member: $e');
     }
   }
 
-  Future<void> deleteMember(String groupId, GroupMember member) async {
+  Future<void> deleteMember(String groupId, int index) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'members': FieldValue.arrayRemove([member.toMap()])});
+      await _firebaseFirestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(groupRef);
+        final members = List<Map<String, dynamic>>.from(
+            (snapshot.data()?['members'] as List?) ?? const []);
+        if (index < 0 || index >= members.length) {
+          throw Exception('Member not found at index $index');
+        }
+        members.removeAt(index);
+        transaction.update(groupRef, {'members': members});
+      });
     } catch (e) {
       throw Exception('Failed to delete member: $e');
     }
@@ -393,20 +417,39 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-  Future<void> updateGuide(String groupId, Guide oldGuide, Guide newGuide) async {
+  // See the comment on updateMember — same index-based fix for the same
+  // exact-value-match problem.
+  Future<void> updateGuide(String groupId, int index, Guide newGuide) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'guides': FieldValue.arrayRemove([oldGuide.toMap()])});
-      await groupRef.update({'guides': FieldValue.arrayUnion([newGuide.toMap()])});
+      await _firebaseFirestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(groupRef);
+        final guides = List<Map<String, dynamic>>.from(
+            (snapshot.data()?['guides'] as List?) ?? const []);
+        if (index < 0 || index >= guides.length) {
+          throw Exception('Guide not found at index $index');
+        }
+        guides[index] = newGuide.toMap();
+        transaction.update(groupRef, {'guides': guides});
+      });
     } catch (e) {
-      throw Exception('Failed to update member: $e');
+      throw Exception('Failed to update guide: $e');
     }
   }
 
-  Future<void> deleteGuide(String groupId, Guide guide) async {
+  Future<void> deleteGuide(String groupId, int index) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'guides': FieldValue.arrayRemove([guide.toMap()])});
+      await _firebaseFirestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(groupRef);
+        final guides = List<Map<String, dynamic>>.from(
+            (snapshot.data()?['guides'] as List?) ?? const []);
+        if (index < 0 || index >= guides.length) {
+          throw Exception('Guide not found at index $index');
+        }
+        guides.removeAt(index);
+        transaction.update(groupRef, {'guides': guides});
+      });
     } catch (e) {
       throw Exception('Failed to delete guide: $e');
     }

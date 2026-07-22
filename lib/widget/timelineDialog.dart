@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/bureau_offer.dart';
 import 'package:backend/models/timeline_event_model.dart';
@@ -6,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'unsplash_image_picker.dart';
@@ -37,6 +41,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
   late TextEditingController transportController;
   late TextEditingController mealsController;
   late TextEditingController activitiesController;
+  late TextEditingController addressController;
 
   late bool isDestination;
   late bool isEditing;
@@ -53,6 +58,21 @@ class _TimelineDialogState extends State<TimelineDialog> {
   String? selectedTransportIcon;
 
   final List<String> _sessionUploadedImages = [];
+
+  // Map location. Only editable when the group has map enabled — resolved
+  // via OpenStreetMap's free Nominatim geocoder, no paid API involved.
+  double? _latitude;
+  double? _longitude;
+  bool _geocoding = false;
+  String? _geocodeError;
+  bool get _mapEnabled => widget.groupInformation.mapEnabled == true;
+
+  // Keeps the address field mirroring "Land, By eller Område" until the
+  // admin edits the address directly — at that point their edit wins and
+  // the two fields stop tracking each other.
+  bool _addressAutoSynced = false;
+  bool _syncingAddressFromCountry = false;
+  Timer? _geocodeDebounce;
 
   @override
   void initState() {
@@ -76,6 +96,35 @@ class _TimelineDialogState extends State<TimelineDialog> {
     mealsController = TextEditingController(text: widget.event?.meals ?? '');
     activitiesController =
         TextEditingController(text: widget.event?.activities ?? '');
+    // No saved address yet (or it still matches the country field from a
+    // prior auto-sync) — keep tracking "Land, By eller Område" until the
+    // admin types their own address.
+    final savedAddress = widget.event?.address;
+    _addressAutoSynced = _mapEnabled &&
+        (savedAddress == null ||
+            savedAddress.isEmpty ||
+            savedAddress == widget.event?.country);
+    addressController = TextEditingController(
+      text: (savedAddress?.isNotEmpty ?? false)
+          ? savedAddress!
+          : (_mapEnabled ? countryController.text : ''),
+    );
+
+    _latitude = widget.event?.latitude;
+    _longitude = widget.event?.longitude;
+
+    addressController.addListener(_onAddressFieldChanged);
+    countryController.addListener(_onCountryFieldChanged);
+
+    // Resolve immediately if we already have an address (auto-filled or
+    // saved) but no coordinates for it yet.
+    if (_mapEnabled &&
+        _latitude == null &&
+        addressController.text.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _geocodeAddress();
+      });
+    }
 
     selectedTransportIcon = widget.event?.transportIcon;
     isDestination = widget.event?.isDestination ?? false;
@@ -94,6 +143,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
 
   @override
   void dispose() {
+    _geocodeDebounce?.cancel();
     typeController.dispose();
     countryController.dispose();
     descriptionController.dispose();
@@ -102,7 +152,107 @@ class _TimelineDialogState extends State<TimelineDialog> {
     transportController.dispose();
     mealsController.dispose();
     activitiesController.dispose();
+    addressController.dispose();
     super.dispose();
+  }
+
+  /// Mirrors "Land, By eller Område" into the address field while it's
+  /// still auto-synced, and re-resolves the point after a short pause in
+  /// typing.
+  void _onCountryFieldChanged() {
+    if (!_mapEnabled || !_addressAutoSynced) return;
+    _syncingAddressFromCountry = true;
+    addressController.text = countryController.text;
+    _syncingAddressFromCountry = false;
+    _scheduleGeocode();
+  }
+
+  /// Clears any stale resolved point whenever the address text changes. A
+  /// change that didn't come from the country-sync above is the admin
+  /// taking manual control, so auto-sync stops from here on.
+  void _onAddressFieldChanged() {
+    final manualEdit = !_syncingAddressFromCountry;
+    final hadCoordinates = _latitude != null || _longitude != null;
+    if (manualEdit && _addressAutoSynced) {
+      setState(() {
+        _addressAutoSynced = false;
+        if (hadCoordinates) {
+          _latitude = null;
+          _longitude = null;
+          _geocodeError = null;
+        }
+      });
+    } else if (hadCoordinates) {
+      setState(() {
+        _latitude = null;
+        _longitude = null;
+        _geocodeError = null;
+      });
+    }
+  }
+
+  void _scheduleGeocode() {
+    _geocodeDebounce?.cancel();
+    _geocodeDebounce = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) _geocodeAddress();
+    });
+  }
+
+  /// Resolves the free-text address/city into coordinates via OpenStreetMap's
+  /// free Nominatim geocoder. Clears any previously resolved point first, so
+  /// stale coordinates never get saved alongside an edited/unresolved address.
+  Future<void> _geocodeAddress() async {
+    final query = addressController.text.trim();
+    setState(() {
+      _geocoding = true;
+      _geocodeError = null;
+      _latitude = null;
+      _longitude = null;
+    });
+
+    if (query.isEmpty) {
+      setState(() {
+        _geocoding = false;
+        _geocodeError = 'Indtast en adresse eller by først';
+      });
+      return;
+    }
+
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': query,
+        'format': 'json',
+        'limit': '1',
+      });
+      final response = await http.get(
+        uri,
+        headers: {'User-Agent': 'BackpackControlpanel/1.0 (contact@backpack-app.dk)'},
+      );
+
+      if (response.statusCode == 200) {
+        final results = jsonDecode(response.body) as List;
+        if (results.isNotEmpty) {
+          final first = results.first as Map<String, dynamic>;
+          setState(() {
+            _latitude = double.tryParse(first['lat'] as String);
+            _longitude = double.tryParse(first['lon'] as String);
+            _geocoding = false;
+          });
+          return;
+        }
+      }
+
+      setState(() {
+        _geocoding = false;
+        _geocodeError = 'Kunne ikke finde stedet. Prøv en mere præcis adresse.';
+      });
+    } catch (e) {
+      print('Error geocoding address: $e');
+      setState(() {
+        _geocoding = false;
+        _geocodeError = 'Fejl ved opslag. Prøv igen.';
+      });
+    }
   }
 
   Future<void> _saveChanges() async {
@@ -128,6 +278,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
         transportIcon: selectedTransportIcon,
         meals: mealsController.text,
         activities: activitiesController.text,
+        address: _mapEnabled ? addressController.text : null,
+        latitude: _mapEnabled ? _latitude : null,
+        longitude: _mapEnabled ? _longitude : null,
       );
 
       final groupDocRef = widget.repository.firestore
@@ -156,6 +309,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
         'transportIcon': savedEvent.transportIcon,
         'meals': savedEvent.meals,
         'activities': savedEvent.activities,
+        'address': savedEvent.address,
+        'latitude': savedEvent.latitude,
+        'longitude': savedEvent.longitude,
         'bureauOffers': savedEvent.bureauOffers
                 ?.map((o) => {
                       'offerName': o.offerName,
@@ -241,21 +397,69 @@ class _TimelineDialogState extends State<TimelineDialog> {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Bekræft sletning'),
-          content: const Text(
-              'Er du sikker på, at du vil slette denne begivenhed? Handlingen kan ikke fortrydes.'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Annuller'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        size: 22, color: Colors.red),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text('Slet begivenhed?',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                        fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+                const SizedBox(height: 6),
+                Text(
+                    'Er du sikker på, at du vil slette denne begivenhed? Handlingen kan ikke fortrydes.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                        fontSize: 13, fontWeight: FontWeight.w500, color: Colors.black54)),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: Text('Annuller',
+                            style: GoogleFonts.kanit(
+                                color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: Text('Slet',
+                            style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Slet'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-            ),
-          ],
+          ),
         );
       },
     ).then((confirmed) {
@@ -689,7 +893,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: AppColors.panelBackground,
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -702,6 +906,39 @@ class _TimelineDialogState extends State<TimelineDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                          isEditing
+                              ? Icons.edit_calendar_outlined
+                              : Icons.add_location_alt_outlined,
+                          color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                          isEditing ? 'Rediger begivenhed' : 'Ny begivenhed',
+                          style: GoogleFonts.kanit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 if (imageUrlController.text.trim().isNotEmpty)
                   ClipRRect(
                     key: ValueKey(imageUrlController.text),
@@ -737,10 +974,30 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         ),
                       ],
                     ),
+                  )
+                else
+                  Container(
+                    height: 110,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.image_outlined, size: 28, color: Colors.grey[400]),
+                        const SizedBox(height: 6),
+                        Text('Intet billede valgt',
+                            style: GoogleFonts.kanit(
+                                fontSize: 12.5, color: Colors.grey[500])),
+                      ],
+                    ),
                   ),
                 const SizedBox(height: 16),
                 _buildTextField(typeController, 'Titel', maxLength: 40),
                 _buildTextField(countryController, 'Land, By eller Område'),
+                if (_mapEnabled) _buildLocationField(),
                 _buildTextField(descriptionController, 'Beskrivelse',
                     maxLines: 3),
                 const SizedBox(height: 16),
@@ -781,16 +1038,12 @@ class _TimelineDialogState extends State<TimelineDialog> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6.0),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.panelBackground,
-                      elevation: 5,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
+                  child: Material(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
                       showModalBottomSheet(
                         context: context,
                         builder: (BuildContext context) {
@@ -847,90 +1100,151 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         },
                       );
                     },
-                    child: Text(
-                        imageUrlController.text.isEmpty
-                            ? 'Vælg billede'
-                            : 'Vælg nyt billede',
-                        style: const TextStyle(fontSize: 16)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.image_outlined, color: AppColors.primary, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                              imageUrlController.text.isEmpty
+                                  ? 'Vælg billede'
+                                  : 'Vælg nyt billede',
+                              style: GoogleFonts.kanit(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15)),
+                        ],
+                      ),
+                    ),
+                    ),
                   ),
                 ),
                 Row(
                   children: [
                     Expanded(
-                      child: GestureDetector(
-                        onTap: _pickStartDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 14, horizontal: 12),
-                          margin: const EdgeInsets.only(
-                              right: 8, top: 8, bottom: 8),
-                          decoration: BoxDecoration(
-                              color: AppColors.chipBackground,
-                              borderRadius: BorderRadius.circular(12)),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Startdato',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
-                              Text(DateFormat('dd/MM/yyyy').format(startDate)),
-                            ],
+                      child: Material(
+                        color: AppColors.cardBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _pickStartDate,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12, horizontal: 12),
+                            margin: const EdgeInsets.only(
+                                right: 8, top: 8, bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.calendar_today_outlined,
+                                    size: 16, color: AppColors.primary),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Startdato',
+                                          style: GoogleFonts.kanit(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[600])),
+                                      Text(
+                                          DateFormat('dd/MM/yyyy')
+                                              .format(startDate),
+                                          style: GoogleFonts.kanit(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                     Expanded(
-                      child: GestureDetector(
-                        onTap: _pickEndDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 14, horizontal: 12),
-                          margin:
-                              const EdgeInsets.only(left: 8, top: 8, bottom: 8),
-                          decoration: BoxDecoration(
-                              color: AppColors.chipBackground,
-                              borderRadius: BorderRadius.circular(12)),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Slutdato',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
-                              Text(DateFormat('dd/MM/yyyy').format(endDate)),
-                            ],
+                      child: Material(
+                        color: AppColors.cardBackground,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: _pickEndDate,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12, horizontal: 12),
+                            margin: const EdgeInsets.only(
+                                left: 8, top: 8, bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.event_outlined,
+                                    size: 16, color: AppColors.primary),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Slutdato',
+                                          style: GoogleFonts.kanit(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[600])),
+                                      Text(
+                                          DateFormat('dd/MM/yyyy')
+                                              .format(endDate),
+                                          style: GoogleFonts.kanit(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                      color: AppColors.chipBackground,
-                      borderRadius: BorderRadius.circular(12)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tilbud fra rejsebureauet',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold)),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 16),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                      Text('TILBUD FRA REJSEBUREAUET',
+                          style: GoogleFonts.kanit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: Colors.grey[600])),
+                      Material(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => _addOrEditOffer(),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add, size: 15, color: AppColors.primary),
+                                const SizedBox(width: 4),
+                                Text('Opret tilbud',
+                                    style: GoogleFonts.kanit(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primary)),
+                              ],
+                            ),
+                          ),
                         ),
-                        onPressed: () => _addOrEditOffer(),
-                        child: Text('Opret tilbud',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w300,
-                                color: AppColors.onPrimary)),
                       ),
                     ],
                   ),
@@ -958,7 +1272,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: AppColors.beige,
+                          color: AppColors.primary.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: ClipRRect(
@@ -969,10 +1283,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                   fit: BoxFit.cover,
                                   errorWidget: (context, url, error) => Icon(
                                       Icons.local_offer,
-                                      color: AppColors.darkGreen),
+                                      color: AppColors.primary),
                                 )
-                              : Icon(Icons.local_offer,
-                                  color: AppColors.darkGreen),
+                              : Icon(Icons.local_offer, color: AppColors.primary),
                         ),
                       ),
                       title: Text(
@@ -996,8 +1309,8 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         ),
                       ),
                       trailing: Container(
-                        decoration: const BoxDecoration(
-                          color: AppColors.beige,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.12),
                           shape: BoxShape.circle,
                         ),
                         child: PopupMenuButton<String>(
@@ -1018,7 +1331,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               child: Row(
                                 children: [
                                   Icon(Icons.edit,
-                                      size: 20, color: AppColors.darkGreen),
+                                      size: 20, color: AppColors.primary),
                                   const SizedBox(width: 12),
                                   Text('Rediger', style: GoogleFonts.kanit()),
                                 ],
@@ -1047,8 +1360,11 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     if (isEditing)
                       TextButton(
                         onPressed: _showDeleteConfirmationDialog,
-                        child: const Text('Slet begivenhed',
-                            style: TextStyle(color: Colors.red, fontSize: 16)),
+                        child: Text('Slet begivenhed',
+                            style: GoogleFonts.kanit(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14)),
                       ),
                     const Spacer(),
                     Expanded(
@@ -1056,16 +1372,18 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          foregroundColor: AppColors.onPrimary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _saveChanges,
                         child: Text(
                             isEditing ? 'Gem ændringer' : 'Opret begivenhed',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w300,
+                            style: GoogleFonts.kanit(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
                                 color: AppColors.onPrimary)),
                       ),
                     ),
@@ -1137,14 +1455,27 @@ class _TimelineDialogState extends State<TimelineDialog> {
               controller: controller,
               maxLines: null,
               keyboardType: TextInputType.multiline,
+              style: GoogleFonts.kanit(fontSize: 14),
               decoration: InputDecoration(
                 labelText: label,
+                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
                 filled: true,
-                fillColor: AppColors.homeGradientStart,
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                fillColor: AppColors.cardBackground,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                ),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear),
+                  icon: Icon(Icons.close, size: 18, color: Colors.grey[500]),
                   onPressed: () {
                     controller.clear();
                     onToggle();
@@ -1158,21 +1489,26 @@ class _TimelineDialogState extends State<TimelineDialog> {
     } else {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4.0),
-        child: OutlinedButton(
-          onPressed: onToggle,
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: Colors.grey.shade400),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.add, color: Colors.black54),
-              const SizedBox(width: 8),
-              Text(buttonText,
-                  style: const TextStyle(color: Colors.black87, fontSize: 16)),
-            ],
+        child: Material(
+          color: AppColors.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(Icons.add, color: AppColors.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Text(buttonText,
+                      style: GoogleFonts.kanit(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14)),
+                ],
+              ),
+            ),
           ),
         ),
       );
@@ -1188,15 +1524,124 @@ class _TimelineDialogState extends State<TimelineDialog> {
         maxLines: maxLines,
         keyboardType: keyboardType,
         maxLength: maxLength,
+        style: GoogleFonts.kanit(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
+          labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
           filled: true,
-          fillColor: AppColors.homeGradientStart,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          fillColor: AppColors.cardBackground,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+          ),
           helperText: maxLength != null
               ? 'Holdes kort, så det passer på rejsekortet i appen'
               : null,
+          helperStyle: GoogleFonts.kanit(fontSize: 11, color: Colors.grey[500]),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLocationField() {
+    final resolved = _latitude != null && _longitude != null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: addressController,
+                  style: GoogleFonts.kanit(fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: 'Adresse eller by (til kort)',
+                    labelStyle:
+                        GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                    filled: true,
+                    fillColor: AppColors.cardBackground,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                    ),
+                    suffixIcon: resolved
+                        ? Icon(Icons.check_circle,
+                            color: Colors.green[600], size: 20)
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.onPrimary,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _geocoding ? null : _geocodeAddress,
+                  child: _geocoding
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.my_location, size: 18),
+                ),
+              ),
+            ],
+          ),
+          if (_geocodeError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(_geocodeError!,
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.red)),
+            )
+          else if (resolved)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                  'Fundet på kort (${_latitude!.toStringAsFixed(3)}, ${_longitude!.toStringAsFixed(3)})',
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.green[700])),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                  _geocoding
+                      ? 'Finder stedet...'
+                      : _addressAutoSynced
+                          ? 'Følger automatisk "Land, By eller Område" — rediger for at bruge en anden adresse'
+                          : 'Tryk på knappen for at finde stedet på kortet',
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[500])),
+            ),
+        ],
       ),
     );
   }

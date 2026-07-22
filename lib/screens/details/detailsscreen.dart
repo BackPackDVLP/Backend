@@ -1,11 +1,23 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:backend/config/app_colors.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/models/coupon_model.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+class _MapBackfillPlan {
+  final List<Map<String, dynamic>> events;
+  final List<int> toGeocode;
+  final int customCount;
+
+  _MapBackfillPlan(
+      {required this.events, required this.toGeocode, required this.customCount});
+}
 
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -35,6 +47,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   bool _flightAway = false;
   bool _flightHome = false;
   bool _mapEnabled = false;
+  bool _mapEnabledAtLoad = false;
+  bool _backfillingMapLocations = false;
   List<String> _beforeDepartureItems = [];
 
   @override
@@ -62,6 +76,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       _flightAway = group.flightAway;
       _flightHome = group.flightHome;
       _mapEnabled = group.mapEnabled;
+      _mapEnabledAtLoad = group.mapEnabled;
       _beforeDepartureItems = List.from(group.beforeDepartureItems ?? []);
       _loading = false;
     });
@@ -85,6 +100,8 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Future<void> _saveGroupDetails() async {
     if (_group == null || !_formKey.currentState!.validate()) return;
 
+    final justEnabledMap = _mapEnabled && !_mapEnabledAtLoad;
+
     try {
       final groupRef =
           widget.repository.firestore.collection('groups').doc(_group!.groupId);
@@ -106,9 +123,22 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       // Optionally, reload the main group info in the BLoC
       // context.read<GroupInformationBloc>().add(LoadGroupInformationById(groupId: _group!.groupId));
 
+      _mapEnabledAtLoad = _mapEnabled;
+
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Details saved')));
+      }
+
+      // The map was just switched on — backfill coordinates for every
+      // existing timeline event that has a location but no point yet,
+      // instead of leaving them unresolved until each is opened by hand.
+      if (justEnabledMap) {
+        final snapshot = await groupRef.get();
+        final data = snapshot.data();
+        if (data != null) {
+          await _runMapBackfill(groupRef, _planMapBackfill(data));
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -116,6 +146,211 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             .showSnackBar(SnackBar(content: Text('Error saving details: $e')));
       }
     }
+  }
+
+  /// Splits a group's timeline events into ones safe to auto-geocode from
+  /// the "country" field and ones the admin already gave a specific
+  /// address (address text differs from country) — those are always left
+  /// alone, whether or not they've been resolved to a point yet.
+  _MapBackfillPlan _planMapBackfill(Map<String, dynamic> data) {
+    final events = List<Map<String, dynamic>>.from(
+      (data['timelineEvents'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map)),
+    );
+
+    final toGeocode = <int>[];
+    var customCount = 0;
+
+    for (var i = 0; i < events.length; i++) {
+      final country = (events[i]['country'] as String?)?.trim() ?? '';
+      final address = (events[i]['address'] as String?)?.trim() ?? '';
+      final hasCoords =
+          events[i]['latitude'] != null && events[i]['longitude'] != null;
+      final isCustomAddress = address.isNotEmpty && address != country;
+
+      if (isCustomAddress) {
+        customCount++;
+        continue;
+      }
+      if (country.isNotEmpty && !hasCoords) {
+        toGeocode.add(i);
+      }
+    }
+
+    return _MapBackfillPlan(
+        events: events, toGeocode: toGeocode, customCount: customCount);
+  }
+
+  /// Geocodes the planned events' "country" field via OpenStreetMap's free
+  /// Nominatim geocoder and writes the result back. Runs sequentially with
+  /// a delay between lookups to respect Nominatim's 1-request-per-second
+  /// usage policy.
+  Future<void> _runMapBackfill(dynamic groupRef, _MapBackfillPlan plan) async {
+    if (_backfillingMapLocations || plan.toGeocode.isEmpty) return;
+
+    setState(() => _backfillingMapLocations = true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Finder placeringer for ${plan.toGeocode.length} begivenheder...'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
+    var resolvedCount = 0;
+    for (final index in plan.toGeocode) {
+      final country = (plan.events[index]['country'] as String).trim();
+      try {
+        final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+          'q': country,
+          'format': 'json',
+          'limit': '1',
+        });
+        final response = await http.get(uri, headers: {
+          'User-Agent': 'BackpackControlpanel/1.0 (contact@backpack-app.dk)',
+        });
+
+        if (response.statusCode == 200) {
+          final results = jsonDecode(response.body) as List;
+          if (results.isNotEmpty) {
+            final first = results.first as Map<String, dynamic>;
+            final lat = double.tryParse(first['lat'] as String);
+            final lng = double.tryParse(first['lon'] as String);
+            if (lat != null && lng != null) {
+              plan.events[index]['address'] = country;
+              plan.events[index]['latitude'] = lat;
+              plan.events[index]['longitude'] = lng;
+              resolvedCount++;
+            }
+          }
+        }
+      } catch (e) {
+        print('Error geocoding "$country" during map backfill: $e');
+      }
+
+      // Nominatim's free usage policy caps requests at 1 per second.
+      await Future.delayed(const Duration(milliseconds: 1100));
+    }
+
+    await groupRef.update({'timelineEvents': plan.events});
+
+    if (mounted) {
+      setState(() => _backfillingMapLocations = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Kort: fandt placering for $resolvedCount af ${plan.toGeocode.length} begivenheder'),
+        ),
+      );
+    } else {
+      _backfillingMapLocations = false;
+    }
+  }
+
+  /// Manual, always-available trigger for the map pinpoint backfill —
+  /// covers groups made before this feature existed, or ones where the
+  /// map switch was already on so the save-time auto-trigger never fires.
+  Future<void> _manualUpdateMapPinpoints() async {
+    if (_group == null || _backfillingMapLocations) return;
+
+    final groupRef =
+        widget.repository.firestore.collection('groups').doc(_group!.groupId);
+    final snapshot = await groupRef.get();
+    final data = snapshot.data();
+    if (data == null) return;
+
+    final plan = _planMapBackfill(data);
+
+    if (plan.toGeocode.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(plan.customCount > 0
+              ? 'Alle begivenheder har allerede en placering (${plan.customCount} har en specifik adresse og røres ikke).'
+              : 'Alle begivenheder har allerede en placering.'),
+        ));
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmed = await _showMapBackfillConfirmDialog(plan);
+    if (confirmed != true) return;
+
+    await _runMapBackfill(groupRef, plan);
+  }
+
+  Future<bool?> _showMapBackfillConfirmDialog(_MapBackfillPlan plan) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.beige,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(Icons.map_outlined, color: AppColors.darkGreen),
+            const SizedBox(width: 12),
+            Text('Opdater pinpoints',
+                style:
+                    GoogleFonts.kanit(fontWeight: FontWeight.bold, fontSize: 20)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                'Finder placering for ${plan.toGeocode.length} begivenhed${plan.toGeocode.length == 1 ? '' : 'er'} ud fra landefeltet.',
+                style: GoogleFonts.kanit(fontSize: 14)),
+            if (plan.customCount > 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        color: Colors.orange, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                          '${plan.customCount} begivenhed${plan.customCount == 1 ? '' : 'er'} har en specifik adresse indtastet manuelt. De røres ikke af denne handling.',
+                          style: GoogleFonts.kanit(
+                              fontSize: 13, color: Colors.black87)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Annuller',
+                style: GoogleFonts.kanit(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Fortsæt',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _addOrEditCoupon({Coupon? existingCoupon}) {
@@ -441,136 +676,269 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             stops: [0.0, 0.5],
           ),
         ),
-        child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 900;
+
+                final travelSection = _buildSectionCard(
+                  title: 'Rejseoplysninger',
+                  icon: Icons.flight_takeoff,
                   children: [
-                    _buildTripHeader(),
-                    const SizedBox(height: 24),
-                    _buildSectionCard(
-                      title: 'Rejseoplysninger',
-                      icon: Icons.flight_takeoff,
-                      children: [
-                        _buildDateRow(),
-                        const SizedBox(height: 16),
-                        _buildTextFormField(
-                            _departureFromController,
-                            'Afrejse fra / Rejsen starter i',
-                            Icons.location_on_outlined),
-                        const SizedBox(height: 16),
-                        _buildTextFormField(
-                            _returnToController,
-                            'Hjemkomst til / Rejsen slutter i',
-                            Icons.location_on),
-                        const SizedBox(height: 16),
-                        _buildTextFormField(_emergencyPhoneController,
-                            'Nødtelefon', Icons.phone,
-                            keyboardType: TextInputType.phone,
-                            isRequired: false),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionCard(
-                      title: 'Flyindstillinger',
-                      icon: Icons.flight,
-                      children: [
-                        SwitchListTile(
-                          title: Text(
-                              'Afrejse: ${_flightAway ? "Inkluderet" : "Ikke inkluderet"}',
-                              style: GoogleFonts.kanit()),
-                          value: _flightAway,
-                          onChanged: (val) => setState(() => _flightAway = val),
-                          activeThumbColor: AppColors.darkGreen,
-                        ),
-                        SwitchListTile(
-                          title: Text(
-                              'Hjemrejse: ${_flightHome ? "Inkluderet" : "Ikke inkluderet"}',
-                              style: GoogleFonts.kanit()),
-                          value: _flightHome,
-                          onChanged: (val) => setState(() => _flightHome = val),
-                          activeThumbColor: AppColors.darkGreen,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionCard(
-                      title: 'App-funktioner',
-                      icon: Icons.map_outlined,
-                      children: [
-                        SwitchListTile(
-                          title: Text('"Vis kort"-knap',
-                              style: GoogleFonts.kanit()),
-                          subtitle: Text(
-                            _mapEnabled
-                                ? 'Vises på rejsekortet i appen'
-                                : 'Skjult i appen',
-                            style: GoogleFonts.kanit(fontSize: 12),
-                          ),
-                          value: _mapEnabled,
-                          onChanged: (val) => setState(() => _mapEnabled = val),
-                          activeThumbColor: AppColors.darkGreen,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionCard(
-                      title: 'Før afrejse',
-                      icon: Icons.checklist,
-                      action: ElevatedButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Tilføj'),
-                        onPressed: () => _addOrEditPreDepartureItem(),
-                      ),
-                      children: [
-                        if (_beforeDepartureItems.isEmpty)
-                          const Center(child: Text('Ingen punkter endnu.'))
-                        else
-                          ..._beforeDepartureItems.asMap().entries.map(
-                                (entry) => _buildPreDepartureItemTile(
-                                    entry.value, entry.key),
-                              ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionCard(
-                      title: 'Kuponer',
-                      icon: Icons.local_offer,
-                      action: ElevatedButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Tilføj'),
-                        onPressed: () => _addOrEditCoupon(),
-                      ),
-                      children: [
-                        if (_group!.coupons == null || _group!.coupons!.isEmpty)
-                          const Center(
-                              child: Text('Ingen kuponer tilføjet endnu.'))
-                        else
-                          ..._group!.coupons!
-                              .map((coupon) => _buildCouponTile(coupon)),
-                      ],
-                    ),
+                    _buildDateRow(),
+                    const SizedBox(height: 12),
+                    _buildTextFormField(
+                        _departureFromController,
+                        'Afrejse fra / Rejsen starter i',
+                        Icons.location_on_outlined),
+                    const SizedBox(height: 12),
+                    _buildTextFormField(_returnToController,
+                        'Hjemkomst til / Rejsen slutter i', Icons.location_on),
+                    const SizedBox(height: 12),
+                    _buildTextFormField(_emergencyPhoneController,
+                        'Nødtelefon', Icons.phone,
+                        keyboardType: TextInputType.phone, isRequired: false),
                   ],
-                ),
-              ),
+                );
+
+                final settingsSection = _buildSectionCard(
+                  title: 'Indstillinger',
+                  icon: Icons.tune,
+                  children: [
+                    _buildCompactSwitch(
+                      icon: Icons.flight_takeoff,
+                      label: 'Afrejse',
+                      subtitle: _flightAway
+                          ? 'Flyver samlet fra lufthavnen'
+                          : 'Rejsen starter på destinationen',
+                      value: _flightAway,
+                      onChanged: (val) => setState(() => _flightAway = val),
+                    ),
+                    _buildCompactSwitch(
+                      icon: Icons.flight_land,
+                      label: 'Hjemrejse',
+                      subtitle: _flightHome
+                          ? 'Lander samlet i lufthavnen'
+                          : 'Rejsen slutter på destinationen',
+                      value: _flightHome,
+                      onChanged: (val) => setState(() => _flightHome = val),
+                    ),
+                    _buildCompactSwitch(
+                      icon: Icons.map_outlined,
+                      label: '"Vis kort"-knap',
+                      subtitle: _mapEnabled
+                          ? 'Vises på rejsekortet i appen'
+                          : 'Skjult i appen',
+                      value: _mapEnabled,
+                      onChanged: (val) => setState(() => _mapEnabled = val),
+                    ),
+                    if (_mapEnabled)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, left: 46),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _backfillingMapLocations
+                                ? null
+                                : _manualUpdateMapPinpoints,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.primary,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 4),
+                            ),
+                            icon: _backfillingMapLocations
+                                ? SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppColors.primary),
+                                  )
+                                : const Icon(Icons.my_location, size: 16),
+                            label: Text(
+                                'Opdater pinpoints automatisk',
+                                style: GoogleFonts.kanit(
+                                    fontSize: 13, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+
+                final preDepartureSection = _buildSectionCard(
+                  title: 'Før afrejse',
+                  icon: Icons.checklist,
+                  action:
+                      _buildAddChip(onTap: () => _addOrEditPreDepartureItem()),
+                  children: [
+                    if (_beforeDepartureItems.isEmpty)
+                      _buildEmptyRow('Ingen punkter endnu')
+                    else
+                      ..._beforeDepartureItems.asMap().entries.map(
+                            (entry) => _buildPreDepartureItemTile(
+                                entry.value, entry.key),
+                          ),
+                  ],
+                );
+
+                final couponsSection = _buildSectionCard(
+                  title: 'Kuponer',
+                  icon: Icons.local_offer,
+                  action: _buildAddChip(onTap: () => _addOrEditCoupon()),
+                  children: [
+                    if (_group!.coupons == null || _group!.coupons!.isEmpty)
+                      _buildEmptyRow('Ingen kuponer tilføjet endnu')
+                    else
+                      ..._group!.coupons!
+                          .map((coupon) => _buildCouponTile(coupon)),
+                  ],
+                );
+
+                final content = isWide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                travelSection,
+                                const SizedBox(height: 16),
+                                settingsSection,
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                preDepartureSection,
+                                const SizedBox(height: 16),
+                                couponsSection,
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          travelSection,
+                          const SizedBox(height: 16),
+                          settingsSection,
+                          const SizedBox(height: 16),
+                          preDepartureSection,
+                          const SizedBox(height: 16),
+                          couponsSection,
+                        ],
+                      );
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTripHeader(),
+                      const SizedBox(height: 16),
+                      content,
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-        ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saveGroupDetails,
         backgroundColor: AppColors.primary,
-        label: Text('Gem Ændringer',
+        label: Text('Gem ændringer',
             style: GoogleFonts.kanit(
                 fontWeight: FontWeight.bold, color: AppColors.onPrimary)),
         icon: Icon(Icons.save, color: AppColors.onPrimary),
       ),
+    );
+  }
+
+  Widget _buildCompactSwitch({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 17, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: GoogleFonts.kanit(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87)),
+                Text(subtitle,
+                    style: GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: AppColors.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddChip({required VoidCallback onTap}) {
+    return Material(
+      color: AppColors.primary.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add, size: 15, color: AppColors.primary),
+              const SizedBox(width: 4),
+              Text('Tilføj',
+                  style: GoogleFonts.kanit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(text, style: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[500])),
     );
   }
 
@@ -588,10 +956,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -603,26 +971,27 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: AppColors.darkGreen.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.info_outline, color: AppColors.darkGreen, size: 26),
+            child: Icon(Icons.info_outline, color: AppColors.darkGreen, size: 22),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(group.groupName ?? group.groupId,
                     style: GoogleFonts.kanit(
-                        fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+                        fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
                     overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(group.groupId,
-                    style: GoogleFonts.kanit(fontSize: 13, color: Colors.black45)),
+                    style: GoogleFonts.kanit(fontSize: 12, color: Colors.black45)),
               ],
             ),
           ),
@@ -652,7 +1021,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -662,7 +1031,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(14.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -672,23 +1041,23 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: AppColors.darkGreen.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(icon, color: AppColors.darkGreen, size: 20),
+                      child: Icon(icon, color: AppColors.darkGreen, size: 18),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Text(title,
                         style: GoogleFonts.kanit(
-                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ],
                 ),
                 if (action != null) action,
               ],
             ),
-            Divider(height: 24, thickness: 1, color: Colors.grey.withValues(alpha: 0.15)),
+            Divider(height: 16, thickness: 1, color: Colors.grey.withValues(alpha: 0.15)),
             ...children,
           ],
         ),
@@ -855,9 +1224,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      style: GoogleFonts.kanit(fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon),
+        labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+        prefixIcon: Icon(icon, size: 19),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: Colors.white,
@@ -878,32 +1251,40 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             child: InputDecorator(
               decoration: InputDecoration(
                 labelText: 'Afrejsedato',
-                prefixIcon: const Icon(Icons.calendar_today),
+                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                prefixIcon: const Icon(Icons.calendar_today, size: 18),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
               child: Text(_departureDateController.text,
-                  style: GoogleFonts.kanit()),
+                  style: GoogleFonts.kanit(fontSize: 14)),
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Expanded(
           child: InkWell(
             onTap: () => _pickDate(_returnDateController, _group!.returnDate),
             child: InputDecorator(
               decoration: InputDecoration(
                 labelText: 'Hjemkomstdato',
-                prefixIcon: const Icon(Icons.calendar_today),
+                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                prefixIcon: const Icon(Icons.calendar_today, size: 18),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
-              child:
-                  Text(_returnDateController.text, style: GoogleFonts.kanit()),
+              child: Text(_returnDateController.text,
+                  style: GoogleFonts.kanit(fontSize: 14)),
             ),
           ),
         ),

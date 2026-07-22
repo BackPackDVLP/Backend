@@ -10,6 +10,7 @@ class AgencyInformation extends Equatable {
   final int maxEmails;
   final String returnMail;
   final String? videoUrl;
+  final double photoStorageLimitGb;
 
   const AgencyInformation({
     required this.agencyCode,
@@ -20,6 +21,7 @@ class AgencyInformation extends Equatable {
     required this.maxEmails,
     required this.returnMail,
     this.videoUrl,
+    this.photoStorageLimitGb = 2.0,
   });
 
   factory AgencyInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -33,6 +35,8 @@ class AgencyInformation extends Equatable {
       maxEmails: data['maxEmails'] ?? 0,
       returnMail: data['returnMail'] ?? '',
       videoUrl: data['videoUrl'] as String?,
+      photoStorageLimitGb:
+          (data['photoStorageLimitGb'] as num?)?.toDouble() ?? 2.0,
     );
   }
 
@@ -46,5 +50,6 @@ class AgencyInformation extends Equatable {
         maxEmails,
         returnMail,
         videoUrl,
+        photoStorageLimitGb,
       ];
 }

@@ -144,23 +144,25 @@ class GroupInformation extends Equatable {
         members: const [
           GroupMember(
             name: 'John Doe',
-            phoneNumber: 01012425,
+            phoneNumber: '4520304050',
             email: 'John@doe.com',
           ),
           GroupMember(
             name: 'Jane Doe',
-            phoneNumber: 01552425,
+            phoneNumber: '4520304051',
             email: 'Jane@doe.com',
           )
         ],
         guides: const [
           Guide(
             name: 'John Doe',
-            phoneNumber: 01012425,
+            phoneNumber: '4520304050',
+            whatsappNumber: '4520304050',
           ),
           Guide(
             name: 'Jane Doe',
-            phoneNumber: 01552425,
+            phoneNumber: '4520304051',
+            email: 'jane@doe.com',
           )
         ],
         timelineEvents: [

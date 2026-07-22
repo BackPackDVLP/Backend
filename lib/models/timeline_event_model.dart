@@ -18,6 +18,9 @@ class TimelineEvent extends Equatable {
   final String? transportIcon;
   final String? meals;
   final String? activities;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
 
   const TimelineEvent({
     required this.id,
@@ -35,6 +38,9 @@ class TimelineEvent extends Equatable {
     this.meals,
     this.activities,
     this.bureauOffers,
+    this.address,
+    this.latitude,
+    this.longitude,
   });
 
   factory TimelineEvent.fromSnapshot(Map<String, dynamic> snap) {
@@ -58,6 +64,9 @@ class TimelineEvent extends Equatable {
       transportIcon: snap['transportIcon'],
       meals: snap['meals'],
       activities: snap['activities'],
+      address: snap['address'],
+      latitude: (snap['latitude'] as num?)?.toDouble(),
+      longitude: (snap['longitude'] as num?)?.toDouble(),
     );
   }
 
@@ -80,6 +89,9 @@ class TimelineEvent extends Equatable {
       transportIcon: map['transportIcon'],
       meals: map['meals'],
       activities: map['activities'],
+      address: map['address'],
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
     );
   }
 
@@ -100,6 +112,9 @@ class TimelineEvent extends Equatable {
       'transportIcon': transportIcon,
       'meals': meals,
       'activities': activities,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
     };
   }
 
@@ -122,5 +137,8 @@ class TimelineEvent extends Equatable {
         transportIcon,
         meals,
         activities,
+        address,
+        latitude,
+        longitude,
       ];
 }

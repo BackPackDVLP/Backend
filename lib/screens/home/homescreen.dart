@@ -15,6 +15,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -24,6 +25,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:timeline_tile/timeline_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:backend/widget/phone_number_field.dart';
 import 'package:backend/widget/timelineeventbox.dart';
 import '../../widget/timelineDialog.dart';
 import '../../widget/departurebox2.dart';
@@ -55,6 +57,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Reference? _currentDocsRef;
   Box<List<String>>? _pdfCacheBox;
   Stream<List<Message>>? _messagesStream;
+
+  // The documents panel is shown inside a dialog (see `_showPanelDialog`),
+  // whose content is only rebuilt by its own local state or by
+  // GroupInformationBloc — not by this State's setState(). Document
+  // fetches/uploads mutate plain fields on this State via setState() here,
+  // so without this hook the dialog would keep showing a stale file list
+  // until closed and reopened. Bound to the dialog's own rebuild function
+  // while it's open (null otherwise) so document changes show immediately.
+  VoidCallback? _documentsDialogRefresh;
 
   @override
   void initState() {
@@ -167,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _currentFolders = folders;
             _fileMetadata = metadataMap;
           });
+          _documentsDialogRefresh?.call();
         }
         await _pdfCacheBox?.put(_currentDocsRef!.fullPath, urlsToCache);
       } catch (e) {
@@ -195,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .toList();
         _fileMetadata = {};
       });
+      _documentsDialogRefresh?.call();
     }
   }
 
@@ -394,6 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _currentDocsRef = folder;
     });
+    _documentsDialogRefresh?.call();
     _fetchDocuments();
   }
 
@@ -405,6 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _currentDocsRef = _currentDocsRef!.parent;
     });
+    _documentsDialogRefresh?.call();
     _fetchDocuments();
   }
 
@@ -629,7 +644,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Center(child: CircularProgressIndicator());
     } else if (state is GroupInformationLoaded) {
       final groupInfo = state.groupInformation;
-      final user = FirebaseAuth.instance.currentUser;
 
       // Merge events and flights into a single timeline list
       final List<dynamic> sortableEvents = [
@@ -667,31 +681,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           flex: 2,
                           child: Padding(
                             padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              children: [
-                                Expanded(
-                                    child: _buildMessagesPanel(
-                                        context, groupInfo, user)),
-                                const SizedBox(height: 8),
-                                Expanded(child: _buildGroupPanel(context, groupInfo)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Flexible(
-                          flex: 2,
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              children: [
-                                Expanded(
-                                    child: _buildDocumentsPanel(context, groupInfo)),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                    child:
-                                        _buildPackingListPanel(context, groupInfo)),
-                              ],
-                            ),
+                            child: _buildQuickAccessSection(context, groupInfo,
+                                expand: true),
                           ),
                         ),
                       ],
@@ -710,24 +701,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildHeroHeader(groupInfo),
                     const SizedBox(height: 8),
                     SizedBox(
-                      height: 300,
-                      child: _buildMessagesPanel(context, groupInfo, user),
+                      height: 420,
+                      child: _buildTimeline(context, groupInfo, sortableEvents),
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      height: 300,
-                      child: _buildGroupPanel(context, groupInfo),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 300,
-                      child: _buildDocumentsPanel(context, groupInfo),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 300,
-                      child: _buildPackingListPanel(context, groupInfo),
-                    ),
+                    _buildQuickAccessSection(context, groupInfo, expand: false),
                   ],
                 ),
               ),
@@ -740,6 +718,242 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       return const Center(child: CircularProgressIndicator());
     }
+  }
+
+  // --- QUICK ACCESS (Messages / Group / Documents / Packing lists) ---
+  //
+  // These sections used to be shown directly on the homescreen. They now
+  // live behind entry-point cards that open the same panel widgets inside a
+  // dialog, so the timeline (the one thing meant to stay directly visible)
+  // gets the space instead.
+
+  static const Color _messagesAccent = Color(0xFF3B82F6);
+  static const Color _groupAccent = Color(0xFF8B5CF6);
+  static const Color _documentsAccent = Color(0xFFF59E0B);
+  static const Color _packingListAccent = Color(0xFF10B981);
+
+  /// [expand] controls whether the cards stretch to fill the available
+  /// height (wide layout, where the column sits next to the timeline) or
+  /// use a fixed height (narrow layout, where the whole page scrolls and an
+  /// `Expanded` would have no bounded height to fill).
+  Widget _buildQuickAccessSection(BuildContext context, GroupInformation groupInfo,
+      {required bool expand}) {
+    final user = FirebaseAuth.instance.currentUser;
+    final cards = [
+      _buildQuickAccessCard(
+        icon: Icons.forum_outlined,
+        title: 'Beskeder',
+        subtitle: 'Se og besvar beskeder',
+        accentColor: _messagesAccent,
+        onTap: () => _showPanelDialog(
+          context,
+          (ctx, info) => _buildMessagesPanel(ctx, info, user),
+        ),
+      ),
+      _buildQuickAccessCard(
+        icon: Icons.groups_outlined,
+        title: 'Gruppe',
+        subtitle: groupInfo.isTemplate == true
+            ? 'Skabelon — ingen medlemmer'
+            : '${groupInfo.members.length} medlemmer · ${groupInfo.guides.length} guider',
+        accentColor: _groupAccent,
+        onTap: () => _showPanelDialog(context, _buildGroupPanel),
+      ),
+      _buildQuickAccessCard(
+        icon: Icons.folder_outlined,
+        title: 'Dokumenter',
+        subtitle: 'Upload og administrer filer',
+        accentColor: _documentsAccent,
+        onTap: () => _showPanelDialog(
+          context,
+          _buildDocumentsPanel,
+          onRefreshBinding: (refresh) => _documentsDialogRefresh = refresh,
+        ),
+      ),
+      _buildQuickAccessCard(
+        icon: Icons.checklist,
+        title: 'Pakkelister',
+        subtitle: '${groupInfo.packinglistCategories.length} kategorier',
+        accentColor: _packingListAccent,
+        onTap: () => _showPanelDialog(context, _buildPackingListPanel),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(height: 14),
+          expand ? Expanded(child: cards[i]) : SizedBox(height: 132, child: cards[i]),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildQuickAccessCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -18,
+                bottom: -18,
+                child: Icon(icon, size: 110, color: accentColor.withOpacity(0.08)),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(icon, color: accentColor, size: 26),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(title,
+                              style: GoogleFonts.kanit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87)),
+                          const SizedBox(height: 3),
+                          Text(subtitle,
+                              style: GoogleFonts.kanit(
+                                  fontSize: 12.5, color: Colors.grey[600]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.arrow_forward_rounded,
+                          color: accentColor, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens [panelBuilder] (one of the existing `_buildXPanel` methods) in a
+  /// large centered dialog. Wrapped in its own [BlocBuilder] so edits made
+  /// via nested dialogs (add/edit guide, upload a document, ...) are
+  /// reflected immediately instead of showing a stale snapshot of
+  /// [GroupInformation] from when the dialog was opened.
+  ///
+  /// [onRefreshBinding], if given, is called with the dialog's own rebuild
+  /// function once it's mounted (and with `null` once it closes) — for
+  /// panels like Documents whose data lives outside GroupInformation/the
+  /// Bloc, so nothing else would tell this dialog to rebuild when that data
+  /// changes.
+  void _showPanelDialog(
+    BuildContext context,
+    Widget Function(BuildContext context, GroupInformation groupInfo) panelBuilder, {
+    void Function(VoidCallback? refresh)? onRefreshBinding,
+  }) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final size = MediaQuery.of(dialogContext).size;
+        final isNarrow = size.width < 700;
+        final width = isNarrow ? size.width * 0.94 : (size.width * 0.6).clamp(420.0, 640.0);
+        final height = size.height * 0.82;
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: (size.width - width) / 2,
+            vertical: (size.height - height) / 2,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: width,
+                  height: height,
+                  // Solid, not translucent: this sits over the dialog
+                  // barrier, and the panels' own `_panelDecoration` uses a
+                  // slightly transparent white meant for the gradient
+                  // homescreen background behind it, not a dark scrim.
+                  color: Colors.white,
+                  child: StatefulBuilder(
+                    builder: (localContext, localSetState) {
+                      onRefreshBinding?.call(() => localSetState(() {}));
+                      return BlocBuilder<GroupInformationBloc, GroupInformationState>(
+                        builder: (blocContext, state) {
+                          if (state is GroupInformationLoaded) {
+                            return panelBuilder(blocContext, state.groupInformation);
+                          }
+                          return const Center(child: CircularProgressIndicator());
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                top: -6,
+                right: -6,
+                child: Material(
+                  color: Colors.white,
+                  shape: const CircleBorder(),
+                  elevation: 2,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => Navigator.of(dialogContext).pop(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.close, size: 18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ).then((_) => onRefreshBinding?.call(null));
   }
 
   // --- TIMELINE ---
@@ -1436,6 +1650,50 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildEmailPickerRow({
+    required IconData icon,
+    required String label,
+    required String valueText,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, size: 19, color: AppColors.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(label,
+                          style: GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[600])),
+                      Text(valueText,
+                          style: GoogleFonts.kanit(
+                              fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                Icon(Icons.expand_more, color: Colors.grey[500]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showEmailComposer(BuildContext context, GroupInformation groupInfo,
       String bureauName, String bureauEmail, List<Reference> allDocuments) {
     final user = FirebaseAuth.instance.currentUser;
@@ -1461,373 +1719,831 @@ class _HomeScreenState extends State<HomeScreen> {
 
     List<Reference> selectedDocuments = [];
 
+    String signatureText = '';
+    String? signatureImageUrl;
+    bool includeSignature = false;
+    bool signatureLoadRequested = false;
+    bool isSending = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
+        initialChildSize: 0.92,
         minChildSize: 0.5,
         maxChildSize: 0.95,
         builder: (_, scrollController) => StatefulBuilder(
-          builder: (context, setState) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // HEADER
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      const Text(
-                        "Ny e-mail",
-                        style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w500),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.send, color: AppColors.darkGreen),
-                        onPressed: () async {
-                          if (selectedEmails.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Vælg mindst én modtager')),
-                            );
-                            return;
-                          }
+          builder: (context, setState) {
+            if (!signatureLoadRequested) {
+              signatureLoadRequested = true;
+              FirebaseFirestore.instance
+                  .collection('agency')
+                  .doc(groupInfo.agencyCode)
+                  .get()
+                  .then((doc) {
+                final data = doc.data();
+                if (data == null) return;
+                final text = data['emailSignatureText'] as String? ?? '';
+                final imageUrl = data['emailSignatureImageUrl'] as String?;
+                setState(() {
+                  signatureText = text;
+                  signatureImageUrl = imageUrl;
+                  includeSignature = text.isNotEmpty || imageUrl != null;
+                });
+              });
+            }
 
-                          if (subjectController.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Emne mangler')),
-                            );
-                            return;
-                          }
+            Future<void> handleSend() async {
+              if (selectedEmails.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Vælg mindst én modtager')),
+                );
+                return;
+              }
+              if (subjectController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Emne mangler')),
+                );
+                return;
+              }
 
-                          // Generate document links
-                          String documentLinksHtml = '';
-                          if (selectedDocuments.isNotEmpty) {
-                            documentLinksHtml +=
-                                '<br><br><b>Vedhæftede dokumenter:</b><br><ul>';
-                            for (final docRef in selectedDocuments) {
-                              try {
-                                final url = await docRef.getDownloadURL();
-                                documentLinksHtml +=
-                                    '<li><a href="$url">${docRef.name}</a></li>';
-                              } catch (e) {
-                                documentLinksHtml +=
-                                    '<li><i>(Link for ${docRef.name} kunne ikke genereres)</i></li>';
-                              }
-                            }
-                            documentLinksHtml += '</ul>';
-                          }
+              setState(() => isSending = true);
 
-                          try {
-                            await user.getIdToken(true);
+              // Generate document links
+              String documentLinksHtml = '';
+              if (selectedDocuments.isNotEmpty) {
+                documentLinksHtml +=
+                    '<br><br><b>Vedhæftede dokumenter:</b><br><ul>';
+                for (final docRef in selectedDocuments) {
+                  try {
+                    final url = await docRef.getDownloadURL();
+                    documentLinksHtml +=
+                        '<li><a href="$url">${docRef.name}</a></li>';
+                  } catch (e) {
+                    documentLinksHtml +=
+                        '<li><i>(Link for ${docRef.name} kunne ikke genereres)</i></li>';
+                  }
+                }
+                documentLinksHtml += '</ul>';
+              }
 
-                            final functions = FirebaseFunctions.instanceFor(
-                              region: 'europe-west1',
-                            );
+              String signatureHtml = '';
+              if (includeSignature &&
+                  (signatureText.isNotEmpty || signatureImageUrl != null)) {
+                signatureHtml +=
+                    '<br><br><hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;">';
+                if (signatureText.isNotEmpty) {
+                  signatureHtml += signatureText.trim().replaceAll('\n', '<br>');
+                }
+                if (signatureImageUrl != null) {
+                  signatureHtml +=
+                      '<br><img src="$signatureImageUrl" style="max-width:280px;margin-top:8px;">';
+                }
+              }
 
-                            final callable =
-                                functions.httpsCallable('sendGroupEmail');
+              try {
+                await user.getIdToken(true);
 
-                            await callable.call({
-                              'to': selectedEmails,
-                              'subject': subjectController.text.trim(),
-                              'html': bodyController.text
-                                      .trim()
-                                      .replaceAll('\n', '<br>') +
-                                  documentLinksHtml,
-                              'fromName': fromNameController.text.trim(),
-                              'replyTo': replyToController.text.trim(),
-                            });
+                final functions = FirebaseFunctions.instanceFor(
+                  region: 'europe-west1',
+                );
 
-                            if (!context.mounted) return;
+                final callable = functions.httpsCallable('sendGroupEmail');
 
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('E-mail sendt')),
-                            );
-                          } on FirebaseFunctionsException catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text(
-                                      e.message ?? 'Kunne ikke sende e-mail')),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Fejl: $e')),
-                            );
-                          }
-                        },
-                      ),
-                    ],
+                await callable.call({
+                  'to': selectedEmails,
+                  'subject': subjectController.text.trim(),
+                  'html': bodyController.text.trim().replaceAll('\n', '<br>') +
+                      documentLinksHtml +
+                      signatureHtml,
+                  'fromName': fromNameController.text.trim(),
+                  'replyTo': replyToController.text.trim(),
+                });
+
+                if (!context.mounted) return;
+
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('E-mail sendt')),
+                );
+              } on FirebaseFunctionsException catch (e) {
+                setState(() => isSending = false);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.message ?? 'Kunne ikke sende e-mail')),
+                  );
+                }
+              } catch (e) {
+                setState(() => isSending = false);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Fejl: $e')));
+                }
+              }
+            }
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-
-                const Divider(),
-
-                // CONTENT
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      // FROM
-                      const Text("Fra", style: TextStyle(color: Colors.grey)),
-                      TextField(
-                        controller: fromNameController,
-                        decoration: const InputDecoration(
-                            labelText: 'Navn (vises som afsender)'),
-                      ),
-
-                      const Divider(),
-
-                      // REPLY-TO
-                      const Text("Svar til",
-                          style: TextStyle(color: Colors.grey)),
-                      TextField(
-                        controller: replyToController,
-                        decoration: const InputDecoration(
-                            labelText: 'E-mail (svar vil gå til denne)'),
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-
-                      const Divider(),
-
-                      // TO
-                      InkWell(
-                        onTap: () async {
-                          final result = await showDialog<List<String>>(
-                            context: context,
-                            builder: (context) {
-                              List<String> tempSelected =
-                                  List.from(selectedEmails);
-
-                              return StatefulBuilder(
-                                builder: (context, setDialogState) {
-                                  return AlertDialog(
-                                    title: const Text('Vælg modtagere'),
-                                    content: SizedBox(
-                                      width: 400,
-                                      child: ListView.builder(
-                                        shrinkWrap: true,
-                                        itemCount: allMembersWithEmail.length,
-                                        itemBuilder: (context, index) {
-                                          final member =
-                                              allMembersWithEmail[index];
-                                          final isSelected = tempSelected
-                                              .contains(member.email);
-
-                                          return CheckboxListTile(
-                                            title: Text(member.name),
-                                            subtitle: Text(member.email),
-                                            value: isSelected,
-                                            onChanged: (value) {
-                                              setDialogState(() {
-                                                value == true
-                                                    ? tempSelected
-                                                        .add(member.email)
-                                                    : tempSelected
-                                                        .remove(member.email);
-                                              });
-                                            },
-                                          );
-                                        },
-                                      ),
+                  // HEADER
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 16, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(Icons.mail_outline, color: AppColors.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text('Ny e-mail',
+                              style: GoogleFonts.kanit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: isSending ? null : () => Navigator.pop(context),
+                        ),
+                        Material(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: isSending ? null : handleSend,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              child: isSending
+                                  ? SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: AppColors.onPrimary),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.send, size: 16, color: AppColors.onPrimary),
+                                        const SizedBox(width: 6),
+                                        Text('Send',
+                                            style: GoogleFonts.kanit(
+                                                color: AppColors.onPrimary,
+                                                fontWeight: FontWeight.w700)),
+                                      ],
                                     ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Annuller'),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () => Navigator.pop(
-                                            context, tempSelected),
-                                        child: const Text('OK'),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                          );
-
-                          if (result != null && context.mounted) {
-                            setState(() => selectedEmails = result);
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            children: [
-                              const Text("Til:",
-                                  style: TextStyle(
-                                      color: Colors.grey, fontSize: 16)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  selectedEmails.isEmpty
-                                      ? 'Ingen modtagere'
-                                      : selectedEmails.join(', '),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Icon(Icons.arrow_drop_down),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
 
-                      const Divider(height: 1),
+                  // CONTENT
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                      children: [
+                        _buildContactField(
+                          controller: fromNameController,
+                          label: 'Afsendernavn',
+                          icon: Icons.badge_outlined,
+                          onChanged: (_) {},
+                        ),
+                        _buildContactField(
+                          controller: replyToController,
+                          label: 'Svar til',
+                          icon: Icons.reply_outlined,
+                          keyboardType: TextInputType.emailAddress,
+                          onChanged: (_) {},
+                        ),
+                        _buildEmailPickerRow(
+                          icon: Icons.people_outline,
+                          label: 'TIL',
+                          valueText: selectedEmails.isEmpty
+                              ? 'Ingen modtagere'
+                              : '${selectedEmails.length} modtager${selectedEmails.length == 1 ? '' : 'e'}: ${selectedEmails.join(', ')}',
+                          onTap: () async {
+                            final result = await showDialog<List<String>>(
+                              context: context,
+                              builder: (dialogContext) {
+                                List<String> tempSelected = List.from(selectedEmails);
 
-                      // ATTACHMENTS
-                      InkWell(
-                        onTap: () async {
-                          final result = await showDialog<List<Reference>>(
-                            context: context,
-                            builder: (context) {
-                              List<Reference> tempSelected =
-                                  List.from(selectedDocuments);
+                                return StatefulBuilder(
+                                  builder: (dialogContext, setDialogState) {
+                                    return Dialog(
+                                      backgroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(20)),
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                            maxWidth: 420,
+                                            maxHeight:
+                                                MediaQuery.of(dialogContext).size.height * 0.7),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(20),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text('Vælg modtagere',
+                                                  style: GoogleFonts.kanit(
+                                                      fontSize: 17,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87)),
+                                              const SizedBox(height: 12),
+                                              Flexible(
+                                                child: ListView.builder(
+                                                  shrinkWrap: true,
+                                                  itemCount: allMembersWithEmail.length,
+                                                  itemBuilder: (context, index) {
+                                                    final member = allMembersWithEmail[index];
+                                                    final isSelected =
+                                                        tempSelected.contains(member.email);
 
-                              return StatefulBuilder(
-                                builder: (context, setDialogState) {
-                                  return AlertDialog(
-                                    title: const Text('Vælg dokumenter'),
-                                    content: SizedBox(
-                                      width: 400,
-                                      child: allDocuments.isEmpty
-                                          ? const Center(
-                                              child: Text(
-                                                  'Ingen dokumenter fundet.'))
-                                          : ListView.builder(
-                                              shrinkWrap: true,
-                                              itemCount: allDocuments.length,
-                                              itemBuilder: (context, index) {
-                                                final doc = allDocuments[index];
-                                                final isSelected =
-                                                    tempSelected.any((d) =>
-                                                        d.fullPath ==
-                                                        doc.fullPath);
-
-                                                return CheckboxListTile(
-                                                  title: Text(doc.name,
-                                                      overflow: TextOverflow
-                                                          .ellipsis),
-                                                  subtitle: Text(
-                                                    doc.fullPath
-                                                        .replaceFirst(
-                                                            '${groupInfo.groupId}/documents/',
-                                                            '')
-                                                        .replaceFirst(
-                                                            '/${doc.name}', ''),
-                                                    style: const TextStyle(
-                                                        color: Colors.grey,
-                                                        fontSize: 12),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  value: isSelected,
-                                                  onChanged: (value) {
-                                                    setDialogState(() {
-                                                      if (value == true) {
-                                                        tempSelected.add(doc);
-                                                      } else {
-                                                        tempSelected
-                                                            .removeWhere((d) =>
-                                                                d.fullPath ==
-                                                                doc.fullPath);
-                                                      }
-                                                    });
+                                                    return CheckboxListTile(
+                                                      title: Text(member.name,
+                                                          style: GoogleFonts.kanit(
+                                                              fontWeight: FontWeight.w600)),
+                                                      subtitle: Text(member.email,
+                                                          style: GoogleFonts.kanit(fontSize: 12)),
+                                                      value: isSelected,
+                                                      activeColor: AppColors.primary,
+                                                      onChanged: (value) {
+                                                        setDialogState(() {
+                                                          value == true
+                                                              ? tempSelected.add(member.email)
+                                                              : tempSelected.remove(member.email);
+                                                        });
+                                                      },
+                                                    );
                                                   },
-                                                );
-                                              },
-                                            ),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Annuller'),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: TextButton(
+                                                      onPressed: () => Navigator.pop(dialogContext),
+                                                      child: Text('Annuller',
+                                                          style: GoogleFonts.kanit(
+                                                              color: Colors.grey[600],
+                                                              fontWeight: FontWeight.w600)),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: ElevatedButton(
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: AppColors.primary,
+                                                        foregroundColor: AppColors.onPrimary,
+                                                        elevation: 0,
+                                                        padding:
+                                                            const EdgeInsets.symmetric(vertical: 12),
+                                                        shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(10)),
+                                                      ),
+                                                      onPressed: () =>
+                                                          Navigator.pop(dialogContext, tempSelected),
+                                                      child: Text('OK',
+                                                          style: GoogleFonts.kanit(
+                                                              fontWeight: FontWeight.w700)),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                      ElevatedButton(
-                                        onPressed: () => Navigator.pop(
-                                            context, tempSelected),
-                                        child: const Text('OK'),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                          );
+                                    );
+                                  },
+                                );
+                              },
+                            );
 
-                          if (result != null && context.mounted) {
-                            setState(() => selectedDocuments = result);
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
+                            if (result != null && context.mounted) {
+                              setState(() => selectedEmails = result);
+                            }
+                          },
+                        ),
+                        _buildEmailPickerRow(
+                          icon: Icons.attach_file,
+                          label: 'VEDHÆFTNINGER (SOM LINKS)',
+                          valueText: selectedDocuments.isEmpty
+                              ? 'Ingen dokumenter valgt'
+                              : selectedDocuments.map((d) => d.name).join(', '),
+                          onTap: () async {
+                            final result = await showDialog<List<Reference>>(
+                              context: context,
+                              builder: (dialogContext) {
+                                List<Reference> tempSelected = List.from(selectedDocuments);
+
+                                return StatefulBuilder(
+                                  builder: (dialogContext, setDialogState) {
+                                    return Dialog(
+                                      backgroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(20)),
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                            maxWidth: 420,
+                                            maxHeight:
+                                                MediaQuery.of(dialogContext).size.height * 0.7),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(20),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text('Vælg dokumenter',
+                                                  style: GoogleFonts.kanit(
+                                                      fontSize: 17,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87)),
+                                              const SizedBox(height: 12),
+                                              Flexible(
+                                                child: allDocuments.isEmpty
+                                                    ? Padding(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(vertical: 20),
+                                                        child: Text('Ingen dokumenter fundet.',
+                                                            style: GoogleFonts.kanit(
+                                                                color: Colors.grey[600])),
+                                                      )
+                                                    : ListView.builder(
+                                                        shrinkWrap: true,
+                                                        itemCount: allDocuments.length,
+                                                        itemBuilder: (context, index) {
+                                                          final doc = allDocuments[index];
+                                                          final isSelected = tempSelected.any(
+                                                              (d) => d.fullPath == doc.fullPath);
+
+                                                          return CheckboxListTile(
+                                                            title: Text(doc.name,
+                                                                style: GoogleFonts.kanit(
+                                                                    fontWeight: FontWeight.w600),
+                                                                overflow: TextOverflow.ellipsis),
+                                                            subtitle: Text(
+                                                              doc.fullPath
+                                                                  .replaceFirst(
+                                                                      '${groupInfo.groupId}/documents/',
+                                                                      '')
+                                                                  .replaceFirst('/${doc.name}', ''),
+                                                              style: GoogleFonts.kanit(
+                                                                  color: Colors.grey[600],
+                                                                  fontSize: 12),
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                            value: isSelected,
+                                                            activeColor: AppColors.primary,
+                                                            onChanged: (value) {
+                                                              setDialogState(() {
+                                                                if (value == true) {
+                                                                  tempSelected.add(doc);
+                                                                } else {
+                                                                  tempSelected.removeWhere((d) =>
+                                                                      d.fullPath == doc.fullPath);
+                                                                }
+                                                              });
+                                                            },
+                                                          );
+                                                        },
+                                                      ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: TextButton(
+                                                      onPressed: () => Navigator.pop(dialogContext),
+                                                      child: Text('Annuller',
+                                                          style: GoogleFonts.kanit(
+                                                              color: Colors.grey[600],
+                                                              fontWeight: FontWeight.w600)),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: ElevatedButton(
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: AppColors.primary,
+                                                        foregroundColor: AppColors.onPrimary,
+                                                        elevation: 0,
+                                                        padding:
+                                                            const EdgeInsets.symmetric(vertical: 12),
+                                                        shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(10)),
+                                                      ),
+                                                      onPressed: () =>
+                                                          Navigator.pop(dialogContext, tempSelected),
+                                                      child: Text('OK',
+                                                          style: GoogleFonts.kanit(
+                                                              fontWeight: FontWeight.w700)),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+
+                            if (result != null && context.mounted) {
+                              setState(() => selectedDocuments = result);
+                            }
+                          },
+                        ),
+                        _buildContactField(
+                          controller: subjectController,
+                          label: 'Emne',
+                          icon: Icons.subject,
+                          onChanged: (_) {},
+                        ),
+                        _buildFormSectionLabel('BESKED'),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: bodyController,
+                          maxLines: 8,
+                          minLines: 6,
+                          keyboardType: TextInputType.multiline,
+                          style: GoogleFonts.kanit(fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: 'Skriv din besked her...',
+                            hintStyle: GoogleFonts.kanit(fontSize: 14, color: Colors.grey[500]),
+                            filled: true,
+                            fillColor: AppColors.cardBackground,
+                            contentPadding: const EdgeInsets.all(14),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // SIGNATURE
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardBackground,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.attach_file, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  selectedDocuments.isEmpty
-                                      ? 'Vedhæft dokumenter (som links)'
-                                      : selectedDocuments
-                                          .map((d) => d.name)
-                                          .join(', '),
-                                  overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Icon(Icons.draw_outlined, size: 18, color: AppColors.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text('Signatur',
+                                        style: GoogleFonts.kanit(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: Colors.black87)),
+                                  ),
+                                  Switch(
+                                    value: includeSignature,
+                                    activeThumbColor: AppColors.primary,
+                                    onChanged: (signatureText.isEmpty && signatureImageUrl == null)
+                                        ? null
+                                        : (val) => setState(() => includeSignature = val),
+                                  ),
+                                ],
+                              ),
+                              if (signatureText.isEmpty && signatureImageUrl == null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text('Du har ikke gemt en signatur endnu.',
+                                      style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
+                                )
+                              else if (includeSignature) ...[
+                                const SizedBox(height: 10),
+                                if (signatureImageUrl != null)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(signatureImageUrl!,
+                                        height: 50, fit: BoxFit.contain, alignment: Alignment.centerLeft),
+                                  ),
+                                if (signatureText.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(signatureText,
+                                        style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.black54)),
+                                  ),
+                              ],
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: () => _showSignatureEditorDialog(
+                                    context,
+                                    agencyCode: groupInfo.agencyCode,
+                                    initialText: signatureText,
+                                    initialImageUrl: signatureImageUrl,
+                                    onSaved: (text, imageUrl) => setState(() {
+                                      signatureText = text;
+                                      signatureImageUrl = imageUrl;
+                                      includeSignature = text.isNotEmpty || imageUrl != null;
+                                    }),
+                                  ),
+                                  icon: const Icon(Icons.edit_outlined, size: 15),
+                                  label: Text(
+                                      signatureText.isEmpty && signatureImageUrl == null
+                                          ? 'Opret signatur'
+                                          : 'Rediger signatur',
+                                      style: GoogleFonts.kanit(
+                                          fontSize: 12.5, fontWeight: FontWeight.w600)),
                                 ),
                               ),
-                              const Icon(Icons.arrow_drop_down),
                             ],
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Lets an agency save a reusable email signature (text + optional image)
+  /// under `agency/{agencyCode}` in Firestore, so it can be appended to any
+  /// email sent from the group email composer.
+  void _showSignatureEditorDialog(
+    BuildContext context, {
+    required String agencyCode,
+    required String initialText,
+    required String? initialImageUrl,
+    required void Function(String text, String? imageUrl) onSaved,
+  }) {
+    final textController = TextEditingController(text: initialText);
+    String? imageUrl = initialImageUrl;
+    bool isUploading = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          Future<void> pickImage() async {
+            final picker = ImagePicker();
+            final XFile? file =
+                await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+            if (file == null) return;
+
+            setState(() => isUploading = true);
+            try {
+              final bytes = await file.readAsBytes();
+              final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+              final fileName = '${DateTime.now().millisecondsSinceEpoch}_$safeName';
+              final ref =
+                  FirebaseStorage.instance.ref('agencies/$agencyCode/signature/$fileName');
+              await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+              final url = await ref.getDownloadURL();
+              setState(() {
+                imageUrl = url;
+                isUploading = false;
+              });
+            } catch (e) {
+              setState(() => isUploading = false);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('Kunne ikke uploade billede: $e')));
+              }
+            }
+          }
+
+          return Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: ConstrainedBox(
+              constraints:
+                  BoxConstraints(maxWidth: 460, maxHeight: MediaQuery.of(context).size.height * 0.85),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(Icons.draw_outlined, color: AppColors.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text('Rediger signatur',
+                                style: GoogleFonts.kanit(
+                                    fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.pop(dialogContext),
+                          ),
+                        ],
                       ),
-
-                      const Divider(height: 1),
-
-                      // SUBJECT
+                      const SizedBox(height: 6),
+                      Text('Vises nederst i alle e-mails du sender herfra.',
+                          style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.grey[600])),
+                      const SizedBox(height: 18),
+                      _buildFormSectionLabel('BILLEDE (VALGFRI)'),
+                      const SizedBox(height: 8),
+                      if (imageUrl != null)
+                        Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                color: AppColors.cardBackground,
+                                width: double.infinity,
+                                height: 100,
+                                child: Image.network(imageUrl!, fit: BoxFit.contain),
+                              ),
+                            ),
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Material(
+                                color: Colors.black.withOpacity(0.5),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: () => setState(() => imageUrl = null),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(6),
+                                    child: Icon(Icons.close, size: 14, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Material(
+                          color: AppColors.cardBackground,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: isUploading ? null : pickImage,
+                            child: Container(
+                              height: 90,
+                              alignment: Alignment.center,
+                              child: isUploading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(strokeWidth: 2))
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.add_photo_alternate_outlined,
+                                            color: AppColors.primary),
+                                        const SizedBox(height: 4),
+                                        Text('Tilføj billede',
+                                            style: GoogleFonts.kanit(
+                                                fontSize: 12.5,
+                                                color: AppColors.primary,
+                                                fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                      if (imageUrl != null && !isUploading)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: TextButton.icon(
+                            onPressed: pickImage,
+                            icon: const Icon(Icons.swap_horiz, size: 16),
+                            label: Text('Skift billede', style: GoogleFonts.kanit(fontSize: 12.5)),
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+                      _buildFormSectionLabel('TEKST'),
+                      const SizedBox(height: 8),
                       TextField(
-                        controller: subjectController,
-                        decoration: const InputDecoration(
-                          hintText: 'Emne',
-                          border: InputBorder.none,
+                        controller: textController,
+                        maxLines: 5,
+                        style: GoogleFonts.kanit(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText:
+                              'F.eks.\nMed venlig hilsen\nDit Rejsebureau\ntlf. 12345678',
+                          hintStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[500]),
+                          filled: true,
+                          fillColor: AppColors.cardBackground,
+                          contentPadding: const EdgeInsets.all(14),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+                          ),
                         ),
                       ),
-
-                      const Divider(height: 1),
-
-                      // IMAGE INSERTION
-
-                      const Divider(height: 1),
-
-                      // BODY
-                      TextField(
-                        controller: bodyController,
-                        decoration: const InputDecoration(
-                          hintText: 'Skriv e-mail',
-                          border: InputBorder.none,
-                        ),
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text('Annuller',
+                                  style: GoogleFonts.kanit(
+                                      color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: AppColors.onPrimary,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape:
+                                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () async {
+                                final text = textController.text.trim();
+                                try {
+                                  await FirebaseFirestore.instance
+                                      .collection('agency')
+                                      .doc(agencyCode)
+                                      .set({
+                                    'emailSignatureText': text,
+                                    'emailSignatureImageUrl': imageUrl,
+                                  }, SetOptions(merge: true));
+                                  onSaved(text, imageUrl);
+                                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Kunne ikke gemme signatur: $e')));
+                                  }
+                                }
+                              },
+                              child: Text('Gem', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1923,7 +2639,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.support_agent,
               iconColor: AppColors.primary,
               title: groupInfo.guides[i].name,
-              subtitle: 'Tel: ${groupInfo.guides[i].phoneNumber}',
+              subtitle: _guideContactSummary(groupInfo.guides[i]),
               trailing:
                   (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
                       ? Row(
@@ -1938,6 +2654,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 context,
                                 groupInfo: groupInfo,
                                 guide: groupInfo.guides[i],
+                                index: i,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -1947,7 +2664,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onPressed: () => _removeGuide(
-                                  context, groupInfo, groupInfo.guides[i]),
+                                  context, groupInfo, i, groupInfo.guides[i]),
                             ),
                           ],
                         )
@@ -1974,63 +2691,306 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
 
-  void _showAddEditGuideDialog(BuildContext context,
-      {required GroupInformation groupInfo, Guide? guide}) {
-    final isEditing = guide != null;
-    String name = guide?.name ?? '';
-    String phone = guide?.phoneNumber.toString() ?? '';
+  String _guideContactSummary(Guide guide) {
+    final parts = <String>[
+      if (guide.hasTitle) guide.title,
+      if (guide.hasPhone) 'Tlf: ${guide.phoneNumber}',
+      if (guide.hasWhatsapp) 'WhatsApp: ${guide.whatsappNumber}',
+      if (guide.hasEmail) guide.email,
+    ];
+    return parts.isEmpty ? 'Ingen kontaktoplysninger' : parts.join(' · ');
+  }
 
+  String _memberContactSummary(GroupMember member) {
+    final parts = <String>[
+      if (member.hasPhone) 'Tlf: ${member.phoneNumber}',
+      if (member.hasWhatsapp) 'WhatsApp: ${member.whatsappNumber}',
+      if (member.hasEmail) member.email,
+    ];
+    return parts.isEmpty ? 'Ingen kontaktoplysninger' : parts.join(' · ');
+  }
+
+  /// A rounded, icon-prefixed text field shared by the guide/member forms.
+  Widget _buildContactField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    Color? iconColor,
+    TextInputType? keyboardType,
+    required ValueChanged<String> onChanged,
+    bool enabled = true,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        onChanged: onChanged,
+        enabled: enabled,
+        style: GoogleFonts.kanit(fontSize: 14),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+          prefixIcon: Icon(icon, size: 19, color: iconColor ?? Colors.grey[500]),
+          filled: true,
+          fillColor: AppColors.cardBackground,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormSectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        text,
+        style: GoogleFonts.kanit(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: Colors.grey[500],
+        ),
+      ),
+    );
+  }
+
+  /// Shared rounded-card dialog shell for the guide/member add-edit forms.
+  Future<void> _showStyledFormDialog({
+    required BuildContext context,
+    required String title,
+    required IconData icon,
+    required List<Widget> fields,
+    required String saveLabel,
+    required void Function(BuildContext dialogContext) onSave,
+  }) {
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(icon, color: AppColors.primary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.kanit(
+                              fontSize: 17, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  ...fields,
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: Text('Annuller',
+                            style: GoogleFonts.kanit(
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => onSave(dialogContext),
+                        child: Text(saveLabel,
+                            style:
+                                GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Shared rounded delete-confirmation dialog for guides/members.
+  void _showDeleteConfirmDialog({
+    required BuildContext context,
+    required String title,
+    required String message,
+    required Future<void> Function() onConfirm,
+  }) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Rediger guide' : 'Tilføj guide'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: TextEditingController(text: name),
-                decoration: const InputDecoration(labelText: 'Navn'),
-                onChanged: (v) => name = v),
-            TextField(
-                controller: TextEditingController(text: phone),
-                decoration: const InputDecoration(labelText: 'Telefonnummer'),
-                keyboardType: TextInputType.phone,
-                onChanged: (v) => phone = v),
-          ],
-        ),
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title,
+            style: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 17)),
+        content: Text(message, style: GoogleFonts.kanit(fontSize: 13.5)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuller')),
-          ElevatedButton(
-            onPressed: () {
-              final newGuide = Guide(
-                name: name,
-                phoneNumber: int.tryParse(phone) ?? 0,
-              );
-              if (isEditing) {
-                context
-                    .read<GroupInformationRepository>()
-                    .updateGuide(groupInfo.groupId, guide, newGuide);
-              } else {
-                context
-                    .read<GroupInformationRepository>()
-                    .addGuide(groupInfo.groupId, newGuide);
-              }
-              Navigator.pop(context);
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text('Annuller',
+                style: GoogleFonts.kanit(color: Colors.grey[600])),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () async {
+              await onConfirm();
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
             },
-            child: const Text('Gem'),
+            child: Text('Slet', style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
   }
 
+  void _showAddEditGuideDialog(BuildContext context,
+      {required GroupInformation groupInfo, Guide? guide, int? index}) {
+    final isEditing = guide != null;
+    String name = guide?.name ?? '';
+    String title = guide?.title ?? '';
+    String phone = guide?.phoneNumber ?? '';
+    String whatsapp = guide?.whatsappNumber ?? '';
+    String email = guide?.email ?? '';
+
+    _showStyledFormDialog(
+      context: context,
+      title: isEditing ? 'Rediger guide' : 'Tilføj guide',
+      icon: Icons.support_agent,
+      saveLabel: 'Gem',
+      fields: [
+        _buildContactField(
+          controller: TextEditingController(text: name),
+          label: 'Navn',
+          icon: Icons.badge_outlined,
+          onChanged: (v) => name = v,
+        ),
+        _buildContactField(
+          controller: TextEditingController(text: title),
+          label: 'Titel (valgfri, fx Rejseleder)',
+          icon: Icons.work_outline,
+          onChanged: (v) => title = v,
+        ),
+        _buildFormSectionLabel('KONTAKT (VALGFRI)'),
+        PhoneNumberField(
+          initialValue: phone,
+          label: 'Telefonnummer',
+          icon: Icons.phone_outlined,
+          iconColor: AppColors.primary,
+          fillColor: AppColors.cardBackground,
+          focusedBorderColor: AppColors.primary,
+          onChanged: (v) => phone = v,
+        ),
+        PhoneNumberField(
+          initialValue: whatsapp,
+          label: 'WhatsApp-nummer',
+          icon: MdiIcons.whatsapp,
+          iconColor: const Color(0xFF25D366),
+          fillColor: AppColors.cardBackground,
+          focusedBorderColor: AppColors.primary,
+          onChanged: (v) => whatsapp = v,
+        ),
+        _buildContactField(
+          controller: TextEditingController(text: email),
+          label: 'Email',
+          icon: Icons.email_outlined,
+          iconColor: AppColors.primary,
+          keyboardType: TextInputType.emailAddress,
+          onChanged: (v) => email = v,
+        ),
+      ],
+      onSave: (dialogContext) async {
+        final newGuide = Guide(
+          name: name.trim(),
+          title: title.trim(),
+          phoneNumber: phone.trim(),
+          whatsappNumber: whatsapp.trim(),
+          email: email.trim(),
+        );
+        if (isEditing) {
+          await dialogContext
+              .read<GroupInformationRepository>()
+              .updateGuide(groupInfo.groupId, index!, newGuide);
+        } else {
+          await dialogContext
+              .read<GroupInformationRepository>()
+              .addGuide(groupInfo.groupId, newGuide);
+        }
+        if (dialogContext.mounted) {
+          dialogContext
+              .read<GroupInformationBloc>()
+              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+          Navigator.of(dialogContext).pop();
+        }
+      },
+    );
+  }
+
   void _removeGuide(
-      BuildContext context, GroupInformation groupInfo, Guide guide) {
-    context
-        .read<GroupInformationRepository>()
-        .deleteGuide(groupInfo.groupId, guide);
+      BuildContext context, GroupInformation groupInfo, int index, Guide guide) {
+    _showDeleteConfirmDialog(
+      context: context,
+      title: 'Slet guide?',
+      message:
+          'Er du sikker på, du vil slette "${guide.name}"? Handlingen kan ikke fortrydes.',
+      onConfirm: () async {
+        await context
+            .read<GroupInformationRepository>()
+            .deleteGuide(groupInfo.groupId, index);
+        if (context.mounted) {
+          context.read<GroupInformationBloc>().add(
+              LoadGroupInformationById(groupId: groupInfo.groupId));
+        }
+      },
+    );
   }
 
   Widget _buildGroupMembersList(GroupInformation groupInfo) => Stack(
@@ -2042,9 +3002,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.person_outline,
               iconColor: AppColors.primary,
               title: groupInfo.members[i].name,
-              subtitle: groupInfo.members[i].email.isNotEmpty
-                  ? groupInfo.members[i].email
-                  : 'No email',
+              subtitle: _memberContactSummary(groupInfo.members[i]),
               trailing:
                   (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
                       ? Row(
@@ -2066,6 +3024,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 context,
                                 groupInfo: groupInfo,
                                 member: groupInfo.members[i],
+                                index: i,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -2074,8 +3033,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   size: 18, color: Colors.redAccent),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
-                              onPressed: () => _removeMember(
-                                  context, groupInfo, groupInfo.members[i]),
+                              onPressed: () => _removeMember(context, groupInfo,
+                                  i, groupInfo.members[i]),
                             ),
                           ],
                         )
@@ -2114,139 +3073,155 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAddEditMemberDialog(BuildContext context,
-      {required GroupInformation groupInfo, GroupMember? member}) {
+      {required GroupInformation groupInfo, GroupMember? member, int? index}) {
     final isEditing = member != null;
     String name = member?.name ?? '';
     String email = member?.email ?? '';
-    String phone = member?.phoneNumber.toString() ?? '';
+    String phone = member?.phoneNumber ?? '';
+    String whatsapp = member?.whatsappNumber ?? '';
 
-    showDialog(
+    _showStyledFormDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Rediger medlem' : 'Tilføj medlem'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                controller: TextEditingController(text: name),
-                decoration: const InputDecoration(labelText: 'Navn'),
-                onChanged: (v) => name = v),
-            TextField(
-                controller: TextEditingController(text: email),
-                decoration: const InputDecoration(labelText: 'Email'),
-                onChanged: (v) => email = v),
-            TextField(
-                controller: TextEditingController(text: phone),
-                decoration: const InputDecoration(labelText: 'Telefonnummer'),
-                keyboardType: TextInputType.phone,
-                onChanged: (v) => phone = v),
-          ],
+      title: isEditing ? 'Rediger medlem' : 'Tilføj medlem',
+      icon: Icons.person_outline,
+      saveLabel: 'Gem',
+      fields: [
+        _buildContactField(
+          controller: TextEditingController(text: name),
+          label: 'Navn',
+          icon: Icons.badge_outlined,
+          onChanged: (v) => name = v,
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuller')),
-          ElevatedButton(
-            onPressed: () async {
-              final newMember = GroupMember(
-                name: name,
-                email: email,
-                phoneNumber: int.tryParse(phone) ?? 0,
-              );
-              if (isEditing) {
-                await context
-                    .read<GroupInformationRepository>()
-                    .updateMember(groupInfo.groupId, member, newMember);
-              } else {
-                if (email.isNotEmpty) {
-                  FirebaseApp? tempApp;
-                  try {
-                    tempApp = await Firebase.initializeApp(
-                      name:
-                          'tempAuthApp_${DateTime.now().millisecondsSinceEpoch}',
-                      options: Firebase.app().options,
-                    );
-                    final generatedPassword = _generateRandomPassword();
-                    UserCredential userCredential =
-                        await FirebaseAuth.instanceFor(app: tempApp)
-                            .createUserWithEmailAndPassword(
-                      email: email,
-                      password: generatedPassword,
-                    );
-                    await userCredential.user?.updateDisplayName(name);
-                  } on FirebaseAuthException catch (e) {
-                    if (!context.mounted) return;
-                    if (e.code == 'email-already-in-use') {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text(
-                              'Brugeren findes allerede og tilføjes til gruppen.')));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(
-                              'Fejl ved oprettelse af bruger: ${e.message}')));
-                      return; // Stop if user creation fails
-                    }
-                  } catch (e) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('En uventet fejl opstod: $e')));
-                    return; // Stop on other errors
-                  } finally {
-                    await tempApp?.delete();
-                  }
-                }
-                // Add member to Firestore group only if auth creation was successful (or no email was provided)
-                if (context.mounted) {
-                  await context
-                      .read<GroupInformationRepository>()
-                      .addMember(groupInfo.groupId, newMember);
-                }
-              }
-              if (context.mounted) {
-                // This will run for edits and successful adds
-                context
-                    .read<GroupInformationBloc>()
-                    .add(LoadGroupInformationById(groupId: groupInfo.groupId));
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Gem'),
+        _buildContactField(
+          controller: TextEditingController(text: email),
+          label: 'Email',
+          icon: Icons.email_outlined,
+          iconColor: AppColors.primary,
+          keyboardType: TextInputType.emailAddress,
+          enabled: !isEditing,
+          onChanged: (v) => email = v,
+        ),
+        if (isEditing)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Email kan ikke ændres her — den er bundet til medlemmets login.',
+              style:
+                  GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[500]),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'En login-konto oprettes automatisk, hvis email er udfyldt.',
+              style:
+                  GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[500]),
+            ),
           ),
-        ],
-      ),
+        _buildFormSectionLabel('KONTAKT (VALGFRI)'),
+        PhoneNumberField(
+          initialValue: phone,
+          label: 'Telefonnummer',
+          icon: Icons.phone_outlined,
+          iconColor: AppColors.primary,
+          fillColor: AppColors.cardBackground,
+          focusedBorderColor: AppColors.primary,
+          onChanged: (v) => phone = v,
+        ),
+        PhoneNumberField(
+          initialValue: whatsapp,
+          label: 'WhatsApp-nummer',
+          icon: MdiIcons.whatsapp,
+          iconColor: const Color(0xFF25D366),
+          fillColor: AppColors.cardBackground,
+          focusedBorderColor: AppColors.primary,
+          onChanged: (v) => whatsapp = v,
+        ),
+      ],
+      onSave: (dialogContext) async {
+        final newMember = GroupMember(
+          name: name.trim(),
+          email: email.trim(),
+          phoneNumber: phone.trim(),
+          whatsappNumber: whatsapp.trim(),
+          fcmToken: member?.fcmToken,
+        );
+        if (isEditing) {
+          await dialogContext
+              .read<GroupInformationRepository>()
+              .updateMember(groupInfo.groupId, index!, newMember);
+        } else {
+          if (newMember.email.isNotEmpty) {
+            FirebaseApp? tempApp;
+            try {
+              tempApp = await Firebase.initializeApp(
+                name:
+                    'tempAuthApp_${DateTime.now().millisecondsSinceEpoch}',
+                options: Firebase.app().options,
+              );
+              final generatedPassword = _generateRandomPassword();
+              UserCredential userCredential =
+                  await FirebaseAuth.instanceFor(app: tempApp)
+                      .createUserWithEmailAndPassword(
+                email: newMember.email,
+                password: generatedPassword,
+              );
+              await userCredential.user?.updateDisplayName(newMember.name);
+            } on FirebaseAuthException catch (e) {
+              if (!dialogContext.mounted) return;
+              if (e.code == 'email-already-in-use') {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(
+                    content: Text(
+                        'Brugeren findes allerede og tilføjes til gruppen.')));
+              } else {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
+                    content: Text(
+                        'Fejl ved oprettelse af bruger: ${e.message}')));
+                return; // Stop if user creation fails
+              }
+            } catch (e) {
+              if (!dialogContext.mounted) return;
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(content: Text('En uventet fejl opstod: $e')));
+              return; // Stop on other errors
+            } finally {
+              await tempApp?.delete();
+            }
+          }
+          // Add member to Firestore group only if auth creation was successful (or no email was provided)
+          if (dialogContext.mounted) {
+            await dialogContext
+                .read<GroupInformationRepository>()
+                .addMember(groupInfo.groupId, newMember);
+          }
+        }
+        if (dialogContext.mounted) {
+          // This will run for edits and successful adds
+          dialogContext
+              .read<GroupInformationBloc>()
+              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+          Navigator.of(dialogContext).pop();
+        }
+      },
     );
   }
 
-  void _removeMember(
-      BuildContext context, GroupInformation groupInfo, GroupMember member) {
-    showDialog(
+  void _removeMember(BuildContext context, GroupInformation groupInfo,
+      int index, GroupMember member) {
+    _showDeleteConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Slet medlem?'),
-          content: Text(
-              'Er du sikker på, du vil slette "${member.name}"? Handlingen kan ikke fortrydes.'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Annuller'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Slet'),
-              onPressed: () async {
-                await context
-                    .read<GroupInformationRepository>()
-                    .deleteMember(groupInfo.groupId, member);
-                if (context.mounted) {
-                  context.read<GroupInformationBloc>().add(
-                      LoadGroupInformationById(groupId: groupInfo.groupId));
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-            ),
-          ],
-        );
+      title: 'Slet medlem?',
+      message:
+          'Er du sikker på, du vil slette "${member.name}"? Handlingen kan ikke fortrydes.',
+      onConfirm: () async {
+        await context
+            .read<GroupInformationRepository>()
+            .deleteMember(groupInfo.groupId, index);
+        if (context.mounted) {
+          context.read<GroupInformationBloc>().add(
+              LoadGroupInformationById(groupId: groupInfo.groupId));
+        }
       },
     );
   }
@@ -2267,220 +3242,386 @@ class _HomeScreenState extends State<HomeScreen> {
     // Keep track of selected icon name
     String selectedIconName = category?.iconName ?? 'mdi-folder';
 
+    void addItem(StateSetter setState, BuildContext ctx) {
+      final itemController = TextEditingController();
+      showDialog(
+        context: ctx,
+        builder: (itemDialogContext) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Tilføj emne',
+                    style: GoogleFonts.kanit(
+                        fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87)),
+                const SizedBox(height: 14),
+                _buildContactField(
+                  controller: itemController,
+                  label: 'Emne',
+                  icon: Icons.checklist_rtl,
+                  onChanged: (_) {},
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(itemDialogContext),
+                        child: Text('Annuller',
+                            style: GoogleFonts.kanit(
+                                color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          if (itemController.text.trim().isNotEmpty) {
+                            setState(() => items.add(itemController.text.trim()));
+                            Navigator.pop(itemDialogContext);
+                          }
+                        },
+                        child: Text('Tilføj',
+                            style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    void pickIcon(StateSetter setState, BuildContext ctx) {
+      final mdiIcons = {
+        'mdi-folder': MdiIcons.folder, // General
+        'mdi-tshirt-crew': MdiIcons.tshirtCrew, // Tøj
+        'mdi-lotion-outline': MdiIcons.lotionOutline, // Toiletsager
+        'mdi-pill': MdiIcons.pill, // Medicin
+        'mdi-camera': MdiIcons.camera, // Elektronik
+        'mdi-passport': MdiIcons.passport, // Dokumenter
+        'mdi-beach': MdiIcons.beach, // Strand
+        'mdi-hiking': MdiIcons.hiking, // Aktiviteter
+        'mdi-wallet': MdiIcons.wallet, // Penge
+        'mdi-sunglasses': MdiIcons.sunglasses, // Accessories
+        'mdi-book-open-variant': MdiIcons.bookOpenVariant, // Læsestof
+        'mdi-food-apple': MdiIcons.foodApple, // Snacks
+        'mdi-star': MdiIcons.star, // Diverse
+        'mdi-gift': MdiIcons.gift, // Gaver
+        'mdi-headphones': MdiIcons.headphones, // Underholdning
+        'mdi-power-plug': MdiIcons.powerPlug, // Opladere
+      };
+
+      showDialog(
+        context: ctx,
+        builder: (iconDialogContext) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(iconDialogContext).size.height * 0.7,
+              maxWidth: 420,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(22.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Vælg ikon',
+                            style: GoogleFonts.kanit(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => Navigator.pop(iconDialogContext),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4, crossAxisSpacing: 12, mainAxisSpacing: 12),
+                      itemCount: mdiIcons.length,
+                      itemBuilder: (context, index) {
+                        final entry = mdiIcons.entries.elementAt(index);
+                        final isSelected = entry.key == selectedIconName;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            setState(() => selectedIconName = entry.key);
+                            Navigator.pop(iconDialogContext);
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12)),
+                            child: Icon(entry.value,
+                                size: 30,
+                                color: isSelected ? AppColors.onPrimary : AppColors.primary),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     showDialog(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
-            void addItem() {
-              final itemController = TextEditingController();
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Tilføj emne'),
-                  content: TextField(
-                    controller: itemController,
-                    autofocus: true,
-                    decoration: const InputDecoration(labelText: 'Emne'),
-                  ),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Annuller')),
-                    ElevatedButton(
-                        onPressed: () {
-                          if (itemController.text.isNotEmpty) {
-                            setState(() => items.add(itemController.text));
-                            Navigator.pop(context);
-                          }
-                        },
-                        child: const Text('Tilføj')),
-                  ],
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 460,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
                 ),
-              );
-            }
-
-            void pickIcon() {
-              final mdiIcons = {
-                'mdi-folder': MdiIcons.folder, // General
-                'mdi-tshirt-crew': MdiIcons.tshirtCrew, // Tøj
-                'mdi-lotion-outline': MdiIcons.lotionOutline, // Toiletsager
-                'mdi-pill': MdiIcons.pill, // Medicin
-                'mdi-camera': MdiIcons.camera, // Elektronik
-                'mdi-passport': MdiIcons.passport, // Dokumenter
-                'mdi-beach': MdiIcons.beach, // Strand
-                'mdi-hiking': MdiIcons.hiking, // Aktiviteter
-                'mdi-wallet': MdiIcons.wallet, // Penge
-                'mdi-sunglasses': MdiIcons.sunglasses, // Accessories
-                'mdi-book-open-variant': MdiIcons.bookOpenVariant, // Læsestof
-                'mdi-food-apple': MdiIcons.foodApple, // Snacks
-                'mdi-star': MdiIcons.star, // Diverse
-                'mdi-gift': MdiIcons.gift, // Gaver
-                'mdi-headphones': MdiIcons.headphones, // Underholdning
-                'mdi-power-plug': MdiIcons.powerPlug, // Opladere
-              };
-
-              showDialog(
-                context: context,
-                builder: (iconDialogContext) => Dialog(
-                  backgroundColor: AppColors.iconPickerDialog,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20.0)),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.7,
-                      maxWidth: MediaQuery.of(context).size.width * 0.4,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          const Text('Vælg ikon',
-                              style: TextStyle(
-                                  fontSize: 22, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center),
-                          const SizedBox(height: 20),
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(Icons.checklist, color: AppColors.primary),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: GridView.builder(
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 4,
-                                      crossAxisSpacing: 12,
-                                      mainAxisSpacing: 12),
-                              itemCount: mdiIcons.length,
-                              itemBuilder: (context, index) {
-                                final entry = mdiIcons.entries.elementAt(index);
-                                final isSelected =
-                                    entry.key == selectedIconName;
-                                return InkWell(
-                                  onTap: () {
-                                    setState(
-                                        () => selectedIconName = entry.key);
-                                    Navigator.pop(iconDialogContext);
-                                  },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? Colors.brown[400]
-                                            : Colors.brown[100],
-                                        borderRadius:
-                                            BorderRadius.circular(12)),
-                                    child: Icon(entry.value,
-                                        size: 36,
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.black87),
+                            child: Text(isEditing ? 'Rediger kategori' : 'Ny kategori',
+                                style: GoogleFonts.kanit(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.pop(dialogContext),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildContactField(
+                                controller: categoryNameController,
+                                label: 'Kategorinavn',
+                                icon: Icons.label_outline,
+                                onChanged: (_) {},
+                              ),
+                              const SizedBox(height: 4),
+                              _buildFormSectionLabel('IKON'),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => pickIcon(setState, context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.cardBackground,
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(0.14),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                            MdiIcons.fromString(selectedIconName) ??
+                                                MdiIcons.folder,
+                                            color: AppColors.primary,
+                                            size: 19),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text('Skift ikon',
+                                          style: GoogleFonts.kanit(
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87)),
+                                      const Spacer(),
+                                      Icon(Icons.chevron_right, color: Colors.grey[400]),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildFormSectionLabel('EMNER (${items.length})'),
+                                  Material(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(20),
+                                      onTap: () => addItem(setState, context),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 5),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.add,
+                                                size: 15, color: AppColors.primary),
+                                            const SizedBox(width: 3),
+                                            Text('Tilføj',
+                                                style: GoogleFonts.kanit(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: AppColors.primary)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (items.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Text('Ingen emner endnu',
+                                      style: GoogleFonts.kanit(
+                                          fontSize: 13, color: Colors.grey[500])),
+                                )
+                              else
+                                ...items.asMap().entries.map((entry) {
+                                  final idx = entry.key;
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.cardBackground,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(entry.value,
+                                              style: GoogleFonts.kanit(
+                                                  fontSize: 14, color: Colors.black87)),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(Icons.close,
+                                              size: 16, color: Colors.grey[500]),
+                                          onPressed: () => setState(() => items.removeAt(idx)),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text('Annuller',
+                                  style: GoogleFonts.kanit(
+                                      color: Colors.grey[600], fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: AppColors.onPrimary,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () async {
+                                final newCategory = PackinglistCategories(
+                                  categoryName: categoryNameController.text,
+                                  items: items,
+                                  iconName: selectedIconName,
                                 );
+
+                                if (isEditing) {
+                                  await context
+                                      .read<GroupInformationRepository>()
+                                      .updatePackingListCategory(
+                                          groupInfo.groupId, category, newCategory);
+                                } else {
+                                  await context
+                                      .read<GroupInformationRepository>()
+                                      .addPackingListCategory(groupInfo.groupId, newCategory);
+                                }
+                                if (context.mounted) {
+                                  context.read<GroupInformationBloc>().add(
+                                      LoadGroupInformationById(groupId: groupInfo.groupId));
+                                }
+                                Navigator.pop(dialogContext);
                               },
+                              child: Text('Gem',
+                                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
                             ),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
                 ),
-              );
-            }
-
-            return AlertDialog(
-              backgroundColor: AppColors.dialogAltBackground,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: Text(isEditing ? 'Rediger Kategori' : 'Ny Kategori'),
-              content: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.3,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Category Name
-                    TextField(
-                      controller: categoryNameController,
-                      decoration:
-                          const InputDecoration(labelText: 'Kategorinavn'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Icon Picker Row
-                    Row(
-                      children: [
-                        const Text('Ikon:',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 12),
-                        IconButton(
-                          icon: Icon(MdiIcons.fromString(selectedIconName) ??
-                              MdiIcons.folder),
-                          onPressed: pickIcon,
-                          tooltip: 'Vælg ikon',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Items List
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Emner',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(
-                            icon: const Icon(Icons.add_circle),
-                            onPressed: addItem),
-                      ],
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          return ListTile(
-                            title: Text(items[index]),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.remove_circle_outline,
-                                  color: Colors.red),
-                              onPressed: () =>
-                                  setState(() => items.removeAt(index)),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
               ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Annuller')),
-                ElevatedButton(
-                  onPressed: () async {
-                    final newCategory = PackinglistCategories(
-                      categoryName: categoryNameController.text,
-                      items: items,
-                      iconName: selectedIconName,
-                    );
-
-                    if (isEditing) {
-                      await context
-                          .read<GroupInformationRepository>()
-                          .updatePackingListCategory(
-                              groupInfo.groupId, category, newCategory);
-                    } else {
-                      await context
-                          .read<GroupInformationRepository>()
-                          .addPackingListCategory(
-                              groupInfo.groupId, newCategory);
-                    }
-                    if (context.mounted) {
-                      context.read<GroupInformationBloc>().add(
-                          LoadGroupInformationById(groupId: groupInfo.groupId));
-                    }
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Gem'),
-                ),
-              ],
             );
           },
         );
@@ -2490,33 +3631,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _removePackingListCategory(BuildContext context,
       GroupInformation groupInfo, PackinglistCategories category) {
-    showDialog(
+    _showDeleteConfirmDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Slet Kategori?'),
-        content: Text(
-            'Er du sikker på, du vil slette kategorien "${category.categoryName}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Annuller')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              await context
-                  .read<GroupInformationRepository>()
-                  .deletePackingListCategory(groupInfo.groupId, category);
-              if (context.mounted) {
-                context
-                    .read<GroupInformationBloc>()
-                    .add(LoadGroupInformationById(groupId: groupInfo.groupId));
-              }
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Slet', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      title: 'Slet kategori?',
+      message:
+          'Er du sikker på, du vil slette kategorien "${category.categoryName}"? Handlingen kan ikke fortrydes.',
+      onConfirm: () async {
+        await context
+            .read<GroupInformationRepository>()
+            .deletePackingListCategory(groupInfo.groupId, category);
+        if (context.mounted) {
+          context
+              .read<GroupInformationBloc>()
+              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+        }
+      },
     );
   }
 

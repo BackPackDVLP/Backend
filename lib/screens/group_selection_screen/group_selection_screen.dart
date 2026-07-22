@@ -516,6 +516,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       return AgencyImagesScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
+        photoStorageLimitGb: agencyInfo.photoStorageLimitGb,
         isNested: true,
       );
     } else if (_selectedMenuItem == SideMenuItem.packingList) {
@@ -1535,43 +1536,82 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
               centerTitle: true,
             ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: Column(
-          children: [
-            _buildCombinedPreview(themeColor),
-            const SizedBox(height: 32),
-            _buildSectionTitle('Kontaktinformation'),
-            _buildContactCard(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Design & Indhold'),
-            _buildDesignCard(themeColor),
-            const SizedBox(height: 32),
-            _buildActionButtons(themeColor),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton.icon(
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout),
-                label: Text('Log ud',
-                    style: GoogleFonts.kanit(
-                        fontSize: 16, fontWeight: FontWeight.w500)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: BorderSide(
-                      color: Colors.red.withOpacity(0.5), width: 1.5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 900;
+
+            final brandingColumn = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildBrandingCard(themeColor),
+              ],
+            );
+
+            final detailsColumn = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSectionTitle('Kontaktinformation'),
+                _buildContactCard(),
+                const SizedBox(height: 16),
+                _buildSectionTitle('Velkomstbesked'),
+                _buildWelcomeMessageCard(themeColor),
+                const SizedBox(height: 16),
+                _buildSectionTitle('Integrationer'),
+                _buildIntegrationsCard(themeColor),
+              ],
+            );
+
+            return Column(
+              children: [
+                if (isWide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 2, child: brandingColumn),
+                      const SizedBox(width: 20),
+                      Expanded(flex: 3, child: detailsColumn),
+                    ],
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      brandingColumn,
+                      const SizedBox(height: 20),
+                      detailsColumn,
+                    ],
+                  ),
+                const SizedBox(height: 20),
+                _buildActionButtons(themeColor),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: Text('Log ud',
+                        style: GoogleFonts.kanit(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: BorderSide(
+                          color: Colors.red.withOpacity(0.5), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
-              style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
-            ),
-          ],
+                const SizedBox(height: 16),
+                Text(
+                  'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
+                  style:
+                      GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1594,146 +1634,208 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     );
   }
 
-  Widget _buildCombinedPreview(Color themeColor) {
-    return Center(
+  Widget _buildBrandingCard(Color themeColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: MediaQuery.of(context).size.width / 3.5,
-            height: 250,
-            decoration: BoxDecoration(
-              color: themeColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Background Video
-                  if (_videoUrl != null && _videoUrl!.isNotEmpty)
-                    BackgroundVideo(videoUrl: _videoUrl)
-                  else
-                    const BackgroundVideo(videoUrl: null), // Default video
-
-                  // Dim overlay to make logo pop
-                  Container(color: Colors.black26),
-
-                  // Agency Logo or Loading
-                  GestureDetector(
-                    onTap: _pickAndUploadLogo,
-                    child: (_isUploadingLogo || _isLoadingInitialLogo)
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : _logoUrl != null
-                            ? Padding(
-                                padding: const EdgeInsets.all(32.0),
-                                child: CachedNetworkImage(
-                                  imageUrl: _logoUrl!,
-                                  fit: BoxFit.contain,
-                                  placeholder: (context, url) =>
-                                      const CircularProgressIndicator(
-                                          color: Colors.white),
-                                  errorWidget: (context, url, error) =>
-                                      const Icon(Icons.business,
-                                          size: 50, color: Colors.white70),
-                                ),
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.add_photo_alternate_outlined,
-                                      size: 48, color: Colors.white70),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Tilføj logo',
-                                    style: GoogleFonts.kanit(
-                                        color: Colors.white70,
-                                        fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                  ),
-
-                  // Uploading Video Indicator overlay
-                  if (_isUploadingVideo)
-                    Container(
-                      color: Colors.black45,
-                      child: const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-
-                  // Delete Video Button
-                  if (_videoUrl != null &&
-                      _videoUrl!.isNotEmpty &&
-                      !_isUploadingVideo)
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: IconButton(
-                        icon:
-                            const Icon(Icons.videocam_off, color: Colors.white),
-                        onPressed: _deleteVideo,
-                        tooltip: 'Slet baggrundsvideo',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.black45,
-                        ),
-                      ),
-                    ),
-
-                  // Label indicator
-                  Positioned(
-                    bottom: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        'FORVISNING',
-                        style: GoogleFonts.kanit(
-                          color: Colors.white,
-                          fontSize: 10,
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+          Center(
+            child: Container(
+              width: 200,
+              height: 160,
+              decoration: BoxDecoration(
+                color: themeColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Background Video
+                    if (_videoUrl != null && _videoUrl!.isNotEmpty)
+                      BackgroundVideo(videoUrl: _videoUrl)
+                    else
+                      const BackgroundVideo(videoUrl: null), // Default video
+
+                    // Dim overlay to make logo pop
+                    Container(color: Colors.black26),
+
+                    // Agency Logo or Loading
+                    GestureDetector(
+                      onTap: _pickAndUploadLogo,
+                      child: (_isUploadingLogo || _isLoadingInitialLogo)
+                          ? const CircularProgressIndicator(
+                              color: Colors.white)
+                          : _logoUrl != null
+                              ? Padding(
+                                  padding: const EdgeInsets.all(20.0),
+                                  child: CachedNetworkImage(
+                                    imageUrl: _logoUrl!,
+                                    fit: BoxFit.contain,
+                                    placeholder: (context, url) =>
+                                        const CircularProgressIndicator(
+                                            color: Colors.white),
+                                    errorWidget: (context, url, error) =>
+                                        const Icon(Icons.business,
+                                            size: 36, color: Colors.white70),
+                                  ),
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.add_photo_alternate_outlined,
+                                        size: 32, color: Colors.white70),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Tilføj logo',
+                                      style: GoogleFonts.kanit(
+                                          fontSize: 12,
+                                          color: Colors.white70,
+                                          fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                    ),
+
+                    // Uploading Video Indicator overlay
+                    if (_isUploadingVideo)
+                      Container(
+                        color: Colors.black45,
+                        child: const Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white),
+                        ),
+                      ),
+
+                    // Delete Video Button
+                    if (_videoUrl != null &&
+                        _videoUrl!.isNotEmpty &&
+                        !_isUploadingVideo)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: IconButton(
+                          icon: const Icon(Icons.videocam_off,
+                              color: Colors.white, size: 16),
+                          onPressed: _deleteVideo,
+                          tooltip: 'Slet baggrundsvideo',
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black45,
+                          ),
+                        ),
+                      ),
+
+                    // Label indicator
+                    Positioned(
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'FORVISNING',
+                          style: GoogleFonts.kanit(
+                            color: Colors.white,
+                            fontSize: 9,
+                            letterSpacing: 1.1,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-          // Action Buttons
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildCompactActionButton(
                 icon: Icons.image,
-                label: 'Skift Logo',
+                label: 'Logo',
                 onTap: _isUploadingLogo || _isLoadingInitialLogo
                     ? () {}
                     : _pickAndUploadLogo,
                 color: themeColor,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               _buildCompactActionButton(
                 icon: Icons.video_library,
-                label: _videoUrl != null ? 'Skift Video' : 'Tilføj Video',
+                label: 'Video',
                 onTap: _isUploadingVideo ? () {} : _pickAndUploadVideo,
                 color: themeColor,
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: _showColorPicker,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _getColorFromHex(_colorController.text),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _colorController,
+                    decoration: InputDecoration(
+                      labelText: 'Primær farve',
+                      labelStyle: GoogleFonts.kanit(
+                          fontSize: 12, color: Colors.grey[600]),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: GoogleFonts.kanit(fontSize: 14),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.palette, color: Colors.grey, size: 20),
+                  onPressed: _showColorPicker,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1860,107 +1962,146 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     );
   }
 
-  Widget _buildDesignCard(Color themeColor) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(12),
+  Widget _buildWelcomeMessageCard(Color themeColor) {
+    return InkWell(
+      onTap: _showWelcomeMessageDialog,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: _showColorPicker,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _getColorFromHex(_colorController.text),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _colorController,
-                    decoration: InputDecoration(
-                      labelText: 'Primær farve',
-                      labelStyle: GoogleFonts.kanit(
-                          fontSize: 12, color: Colors.grey[600]),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: GoogleFonts.kanit(fontSize: 16),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.palette, color: Colors.grey),
-                  onPressed: _showColorPicker,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          InkWell(
-            onTap: _showWelcomeMessageDialog,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.all(16),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[300]!),
+                color: themeColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                color: Colors.grey[50],
               ),
-              child: Row(
+              child: Icon(Icons.message_outlined, color: themeColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.message, color: Colors.grey[400], size: 20),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _standardMessageController.text.isNotEmpty
-                              ? _standardMessageTitleController.text
-                              : 'Standard velkomstbesked',
-                          style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black87),
-                        ),
-                        Text(
-                          _standardMessageController.text.isNotEmpty
-                              ? _standardMessageController.text
-                              : 'Tryk for at tilføje besked',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.kanit(
-                              fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
+                  Text(
+                    _standardMessageController.text.isNotEmpty
+                        ? _standardMessageTitleController.text
+                        : 'Standard velkomstbesked',
+                    style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600, color: Colors.black87),
                   ),
-                  Icon(Icons.edit, color: themeColor, size: 20),
+                  Text(
+                    _standardMessageController.text.isNotEmpty
+                        ? _standardMessageController.text
+                        : 'Tryk for at tilføje besked',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                        fontSize: 12, color: Colors.grey[600]),
+                  ),
                 ],
               ),
             ),
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIntegrationsCard(Color themeColor) {
+    return InkWell(
+      onTap: _showConnectCrmDialog,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: themeColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.hub_outlined, color: themeColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Forbind CRM',
+                      style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w600, color: Colors.black87)),
+                  Text('Automatisér oprettelse af rejser fra jeres CRM',
+                      style: GoogleFonts.kanit(
+                          fontSize: 12, color: Colors.grey[600])),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showConnectCrmDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(Icons.hub_outlined, color: AppColors.darkGreen),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('Forbind dit CRM',
+                  style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.bold, fontSize: 20)),
+            ),
+          ],
+        ),
+        content: Text(
+          'Kontakt BackPack for at høre om mulighederne for at forbinde jeres CRM til kontrolpanelet.',
+          style: GoogleFonts.kanit(fontSize: 14, color: Colors.black87),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: Text('Luk', style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -2036,12 +2177,14 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
 class AgencyImagesScreen extends StatefulWidget {
   final String agencyCode;
   final Color mainColor;
+  final double photoStorageLimitGb;
   final bool isNested;
 
   const AgencyImagesScreen({
     super.key,
     required this.agencyCode,
     required this.mainColor,
+    this.photoStorageLimitGb = 2.0,
     this.isNested = false,
   });
 
@@ -2058,10 +2201,123 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
   bool _isSelectionMode = false;
   Set<String> _selectedItems = {};
 
+  // Storage quota. Usage is tracked incrementally after the initial full
+  // scan (add on upload, subtract on delete) rather than re-scanning the
+  // whole tree on every action, since that requires a metadata fetch per
+  // file and can get slow for agencies with a lot of photos.
+  int _usedBytes = 0;
+  bool _isLoadingUsage = true;
+  int get _limitBytes => (widget.photoStorageLimitGb * 1000000000).round();
+
   @override
   void initState() {
     super.initState();
     _loadImages();
+    _loadUsage();
+  }
+
+  Future<void> _loadUsage() async {
+    var photoBytes = 0;
+    var videoBytes = 0;
+
+    try {
+      photoBytes = await _calculateFolderSize(FirebaseStorage.instance
+          .ref('agencies/${widget.agencyCode}/timeline_images'));
+    } catch (e) {
+      // No photos uploaded yet (folder doesn't exist) or a transient error —
+      // either way, don't block the screen on this.
+    }
+
+    try {
+      // The bureau background video (uploaded from Bureauindstillinger)
+      // lives directly under agencies/{agencyCode}/, a sibling of
+      // timeline_images/ — listing just this level's items (not recursing
+      // into subfolders) picks up the video without also pulling in the
+      // separate email-signature folder that lives here too.
+      final agencyRoot =
+          await FirebaseStorage.instance.ref('agencies/${widget.agencyCode}').listAll();
+      for (final item in agencyRoot.items) {
+        final metadata = await item.getMetadata();
+        videoBytes += metadata.size ?? 0;
+      }
+    } catch (e) {
+      // No video uploaded yet or a transient error.
+    }
+
+    if (mounted) {
+      setState(() {
+        _usedBytes = photoBytes + videoBytes;
+        _isLoadingUsage = false;
+      });
+    }
+  }
+
+  Future<int> _calculateFolderSize(Reference ref) async {
+    final result = await ref.listAll();
+    var total = 0;
+    for (final item in result.items) {
+      if (item.name == '.keep') continue;
+      final metadata = await item.getMetadata();
+      total += metadata.size ?? 0;
+    }
+    for (final prefix in result.prefixes) {
+      total += await _calculateFolderSize(prefix);
+    }
+    return total;
+  }
+
+  String _formatGb(int bytes) => (bytes / 1000000000).toStringAsFixed(2);
+
+  Widget _buildUsageBar() {
+    final fraction = (!_isLoadingUsage && _limitBytes > 0)
+        ? (_usedBytes / _limitBytes).clamp(0.0, 1.0)
+        : 0.0;
+    final isFull = !_isLoadingUsage && _usedBytes >= _limitBytes;
+    final isNearFull = !_isLoadingUsage && fraction >= 0.9;
+    final barColor =
+        isFull ? Colors.red : (isNearFull ? Colors.orange : widget.mainColor);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Lagerplads (billeder + video)',
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
+              Text(
+                  _isLoadingUsage
+                      ? 'Beregner...'
+                      : '${_formatGb(_usedBytes)} / ${widget.photoStorageLimitGb.toStringAsFixed(1)} GB',
+                  style: GoogleFonts.kanit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isFull ? Colors.red : Colors.grey[700])),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: _isLoadingUsage
+                ? LinearProgressIndicator(
+                    minHeight: 6,
+                    backgroundColor: Colors.grey[200],
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(widget.mainColor.withValues(alpha: 0.4)),
+                  )
+                : LinearProgressIndicator(
+                    value: fraction,
+                    minHeight: 6,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 
   String get _storageBasePath {
@@ -2216,16 +2472,28 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
         );
 
         if (croppedFile != null) {
+          final bytes = await croppedFile.readAsBytes();
+
+          if (!_isLoadingUsage && _usedBytes + bytes.length > _limitBytes) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                    'Billedbanken er fuld (${_formatGb(_usedBytes)} / ${widget.photoStorageLimitGb.toStringAsFixed(1)} GB). Kontakt BackPack for at få mere plads.'),
+              ));
+            }
+            return;
+          }
+
           setState(() => _isLoading = true);
 
           final fileName = image.name;
           final ref =
               FirebaseStorage.instance.ref('$_storageBasePath/$fileName');
 
-          final bytes = await croppedFile.readAsBytes();
           final metadata = SettableMetadata(contentType: 'image/jpeg');
 
           await ref.putData(bytes, metadata);
+          _usedBytes += bytes.length;
           await _loadImages();
         }
       }
@@ -2261,7 +2529,14 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
     if (confirm == true) {
       setState(() => _isLoading = true);
       try {
+        int? freedBytes;
+        try {
+          freedBytes = (await ref.getMetadata()).size;
+        } catch (_) {
+          // Metadata fetch failing shouldn't block the delete itself.
+        }
         await ref.delete();
+        if (freedBytes != null) _usedBytes -= freedBytes;
         await _loadImages();
       } catch (e) {
         setState(() => _isLoading = false);
@@ -2665,6 +2940,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                     ),
                 ]
               ])),
+          _buildUsageBar(),
           Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
