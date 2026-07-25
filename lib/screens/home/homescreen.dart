@@ -28,6 +28,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:backend/widget/phone_number_field.dart';
 import 'package:backend/widget/timelineeventbox.dart';
 import '../../widget/timelineDialog.dart';
+import '../../widget/timeline_map_overview_dialog.dart';
 import '../../widget/departurebox2.dart';
 import '../../widget/returnbox2.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
@@ -575,7 +576,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
 
-  Widget _buildPanelHeader(IconData icon, String title, {Widget? leading}) {
+  Widget _buildPanelHeader(IconData icon, String title,
+      {Widget? leading, Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Row(
@@ -596,6 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
                 overflow: TextOverflow.ellipsis),
           ),
+          if (trailing != null) trailing,
         ],
       ),
     );
@@ -968,7 +971,32 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Column(
             children: [
-              _buildPanelHeader(Icons.timeline, 'Rejseforløb'),
+              _buildPanelHeader(
+                Icons.timeline,
+                'Rejseforløb',
+                trailing: groupInfo.mapEnabled
+                    ? IconButton(
+                        tooltip: 'Verificer lokationer på kort',
+                        icon: Icon(Icons.map_outlined,
+                            color: AppColors.primary, size: 20),
+                        onPressed: () async {
+                          final result = await showDialog(
+                            context: context,
+                            builder: (context) => TimelineMapOverviewDialog(
+                              groupInformation: groupInfo,
+                              repository:
+                                  context.read<GroupInformationRepository>(),
+                            ),
+                          );
+                          if (result == true && mounted) {
+                            context.read<GroupInformationBloc>().add(
+                                LoadGroupInformationById(
+                                    groupId: groupInfo.groupId));
+                          }
+                        },
+                      )
+                    : null,
+              ),
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),

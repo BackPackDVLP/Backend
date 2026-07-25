@@ -54,7 +54,6 @@ dependencies:
   dotted_dashed_line: ^0.0.3
   flutter_native_splash: ^2.4.4
   syncfusion_flutter_calendar: ^28.1.38
-  google_maps_flutter: ^2.10.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   http: ^1.2.0
@@ -75,6 +74,7 @@ dependencies:
   image_cropper: ^11.0.0
   image_picker: ^1.2.1
   crop_your_image: ^2.0.0
+  flutter_map_cancellable_tile_provider: ^3.0.2
 
 dev_dependencies:
   flutter_test:
