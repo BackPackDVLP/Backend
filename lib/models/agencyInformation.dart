@@ -12,6 +12,15 @@ class AgencyInformation extends Equatable {
   final String? videoUrl;
   final double photoStorageLimitGb;
 
+  // Plan-gated features: default to false (not activated) for any bureau
+  // where these fields aren't set yet in Firestore. The corresponding
+  // integration UI stays visible either way — it just shows as not
+  // activated rather than disappearing, so bureaus can see what's
+  // available and BackPack can pitch it.
+  final bool crmEnabled;
+  final bool emailIntegrationEnabled;
+  final bool aiTripBuilderEnabled;
+
   const AgencyInformation({
     required this.agencyCode,
     required this.agencyName,
@@ -22,6 +31,9 @@ class AgencyInformation extends Equatable {
     required this.returnMail,
     this.videoUrl,
     this.photoStorageLimitGb = 2.0,
+    this.crmEnabled = false,
+    this.emailIntegrationEnabled = false,
+    this.aiTripBuilderEnabled = false,
   });
 
   factory AgencyInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -37,6 +49,10 @@ class AgencyInformation extends Equatable {
       videoUrl: data['videoUrl'] as String?,
       photoStorageLimitGb:
           (data['photoStorageLimitGb'] as num?)?.toDouble() ?? 2.0,
+      crmEnabled: data['crmEnabled'] as bool? ?? false,
+      emailIntegrationEnabled:
+          data['emailIntegrationEnabled'] as bool? ?? false,
+      aiTripBuilderEnabled: data['aiTripBuilderEnabled'] as bool? ?? false,
     );
   }
 
@@ -51,5 +67,8 @@ class AgencyInformation extends Equatable {
         returnMail,
         videoUrl,
         photoStorageLimitGb,
+        crmEnabled,
+        emailIntegrationEnabled,
+        aiTripBuilderEnabled,
       ];
 }

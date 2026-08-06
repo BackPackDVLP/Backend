@@ -1,3 +1,4 @@
+import 'package:backend/config/app_colors.dart';
 import 'package:backend/widget/edit_person_dialog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -208,7 +209,7 @@ class _TeamScreenState extends State<TeamScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.scaffoldGradientStart,
       appBar: widget.isNested
           ? null
           : AppBar(
@@ -219,18 +220,37 @@ class _TeamScreenState extends State<TeamScreen> {
               backgroundColor: widget.mainColor,
               foregroundColor: Colors.white,
             ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('admins')
-            .where('agencyCodes', arrayContains: widget.agencyCode)
-            .snapshots(),
-        builder: (context, adminsSnapshot) {
-          final employeeDocs = adminsSnapshot.data?.docs ?? [];
-          final isOwner = employeeDocs.any((doc) =>
-              doc.id == currentUid &&
-              (doc.data() as Map<String, dynamic>)['role'] == 'owner');
+      body: StreamBuilder<DocumentSnapshot>(
+        // The caller's own admins/{uid} doc, separate from the roster query
+        // below — a BACKPACK-ADMIN's own doc has agencyCodes: ['BACKPACK-
+        // ADMIN'], so it never shows up in a query scoped to this specific
+        // bureau's agencyCode, and would otherwise never read as "owner"
+        // for a bureau they don't directly own.
+        stream: currentUid == null
+            ? const Stream.empty()
+            : FirebaseFirestore.instance
+                .collection('admins')
+                .doc(currentUid)
+                .snapshots(),
+        builder: (context, ownDocSnapshot) {
+          final ownData = ownDocSnapshot.data?.data() as Map<String, dynamic>?;
+          final isSuperAdmin = List<String>.from(
+                  ownData?['agencyCodes'] as List? ?? [])
+              .contains('BACKPACK-ADMIN');
 
-          return ListView(
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('admins')
+                .where('agencyCodes', arrayContains: widget.agencyCode)
+                .snapshots(),
+            builder: (context, adminsSnapshot) {
+              final employeeDocs = adminsSnapshot.data?.docs ?? [];
+              final isOwner = isSuperAdmin ||
+                  employeeDocs.any((doc) =>
+                      doc.id == currentUid &&
+                      (doc.data() as Map<String, dynamic>)['role'] == 'owner');
+
+              return ListView(
             padding: const EdgeInsets.all(20),
             children: [
               _buildSectionHeader(
@@ -254,46 +274,77 @@ class _TeamScreenState extends State<TeamScreen> {
                   final role = data['role'] as String? ?? 'employee';
                   final email = data['email'] as String? ?? '';
                   final name = data['name'] as String? ?? '';
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: widget.mainColor.withOpacity(0.15),
-                        child: Icon(
-                          role == 'owner' ? Icons.star : Icons.person,
-                          color: widget.mainColor,
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                      title: Text(name.isNotEmpty ? name : email,
-                          style:
-                              GoogleFonts.kanit(fontWeight: FontWeight.w600)),
-                      subtitle: Text(
-                          '$email · ${role == 'owner' ? 'Ejer' : 'Medarbejder'}'),
-                      trailing: isOwner
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor:
+                              widget.mainColor.withValues(alpha: 0.12),
+                          child: Icon(
+                            role == 'owner' ? Icons.star : Icons.person,
+                            color: widget.mainColor,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name.isNotEmpty ? name : email,
+                                  style: GoogleFonts.kanit(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15)),
+                              const SizedBox(height: 2),
+                              Text(
+                                  '$email · ${role == 'owner' ? 'Ejer' : 'Medarbejder'}',
+                                  style: GoogleFonts.kanit(
+                                      fontSize: 12, color: Colors.grey[600])),
+                            ],
+                          ),
+                        ),
+                        if (isOwner)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.edit_outlined,
+                                    color: Colors.grey[600]),
+                                tooltip: 'Rediger medarbejder',
+                                onPressed: () =>
+                                    _editEmployee(doc.id, name, email),
+                              ),
+                              if (role != 'owner')
                                 IconButton(
-                                  icon: const Icon(Icons.edit_outlined),
-                                  tooltip: 'Rediger medarbejder',
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.red),
+                                  tooltip: 'Fjern medarbejder',
                                   onPressed: () =>
-                                      _editEmployee(doc.id, name, email),
+                                      _removeEmployee(doc.id, email),
                                 ),
-                                if (role != 'owner')
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        color: Colors.red),
-                                    tooltip: 'Fjern medarbejder',
-                                    onPressed: () =>
-                                        _removeEmployee(doc.id, email),
-                                  ),
-                              ],
-                            )
-                          : null,
+                            ],
+                          ),
+                      ],
                     ),
                   );
                 }),
             ],
+          );
+            },
           );
         },
       ),

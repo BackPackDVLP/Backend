@@ -52,12 +52,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (user != null) {
         await user.reload(); // Refresh user data
+        // A successful sign-in fires authStateChanges() immediately, which
+        // the app's root StreamBuilder (_AuthGate in main.dart) reacts to
+        // by swapping this screen out right away — often before the rest
+        // of this async chain finishes. Every context use below must be
+        // guarded, or it throws on the now-unmounted LoginScreen.
+        if (!mounted) return;
         final refreshedUser = FirebaseAuth.instance.currentUser!;
 
         if (!refreshedUser.emailVerified) {
           // If not verified, deny access
           await refreshedUser.sendEmailVerification();
           await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -73,7 +80,9 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // Proceed if verified
+        // Proceed if verified — _AuthGate has likely already navigated
+        // away by this point, so this is now a harmless no-op rather than
+        // a required navigation, but it's still guarded in case it hasn't.
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const GroupIDScreen()),
@@ -89,6 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
         errorMessage = 'Invalid email format.';
       }
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage)),
       );

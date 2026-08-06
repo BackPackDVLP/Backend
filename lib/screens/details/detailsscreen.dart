@@ -209,7 +209,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           'limit': '1',
         });
         final response = await http.get(uri, headers: {
-          'User-Agent': 'BackpackControlpanel/1.0 (contact@backpack-app.dk)',
+          'User-Agent': 'BackpackControlpanel/1.0 (kontact@backpack-app.dk)',
         });
 
         if (response.statusCode == 200) {

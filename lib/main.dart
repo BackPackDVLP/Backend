@@ -130,6 +130,34 @@ void main() async {
   runApp(const MyApp());
 }
 
+/// Gates the app on Firebase auth state, independent of navigation/routing.
+/// Kept separate from MaterialApp so it can be forced as the initial route
+/// via onGenerateInitialRoutes regardless of any URL a browser reload
+/// tries to restore.
+class _AuthGate extends StatelessWidget {
+  const _AuthGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.active) {
+          if (snapshot.data != null) {
+            return const GroupIDScreen();
+          } else {
+            return const LoginScreen();
+          }
+        } else {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+      },
+    );
+  }
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -161,7 +189,8 @@ class MyApp extends StatelessWidget {
             checkboxTheme: CheckboxThemeData(
               fillColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
-                  return const Color.fromARGB(255, 255, 255, 255); // Your desired checked color
+                  return const Color.fromARGB(
+                      255, 255, 255, 255); // Your desired checked color
                 }
                 return Colors.transparent; // Your desired unchecked color
               }),
@@ -170,28 +199,18 @@ class MyApp extends StatelessWidget {
             ),
           ),
           onGenerateRoute: AppRouter.onGenerateRoute,
-          home: StreamBuilder<User?>(
-            // Use a StreamBuilder to listen for auth changes
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.active) {
-                // User is logged in
-                if (snapshot.data != null) {
-                  return const GroupIDScreen();
-                } else {
-                  // User is not logged in
-                  return const LoginScreen();
-                }
-              } else {
-                // Still checking authentication state, show a loading indicator
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-            },
-          ), // Start with GroupIDScreen
+          // On web, a hard reload restores whatever URL was in the address
+          // bar (e.g. deep inside a bureau's dashboard), which would
+          // otherwise skip straight back into that bureau. Overriding
+          // onGenerateInitialRoutes ignores that restored URL and always
+          // starts fresh at the auth gate, so a reload re-runs agency
+          // resolution — and re-prompts multi-agency/BACKPACK-ADMIN
+          // accounts to pick — instead of silently resuming.
+          onGenerateInitialRoutes: (_) => [
+            MaterialPageRoute(builder: (_) => const _AuthGate()),
+          ],
         ),
       ),
     );
-    }
+  }
 }

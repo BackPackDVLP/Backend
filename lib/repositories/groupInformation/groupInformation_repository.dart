@@ -94,8 +94,9 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-  Future<void> updateMessage(String groupId, String messageId, String title,
-      String content, {List<Map<String, String>>? attachments}) async {
+  Future<void> updateMessage(
+      String groupId, String messageId, String title, String content,
+      {List<Map<String, String>>? attachments}) async {
     try {
       final messageRef = _firebaseFirestore
           .collection('groups')
@@ -143,7 +144,10 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
 
   Stream<List<GroupMessage>> streamAllGroupMessages(List<String> groupIds) {
     final idSet = groupIds.toSet();
-    return _firebaseFirestore.collectionGroup('messages').snapshots().map((snapshot) {
+    return _firebaseFirestore
+        .collectionGroup('messages')
+        .snapshots()
+        .map((snapshot) {
       final messages = snapshot.docs
           .where((doc) => idSet.contains(doc.reference.parent.parent?.id))
           .map((doc) {
@@ -175,11 +179,14 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
 
   Stream<int> streamUnreadMessageCount(List<String> groupIds) {
     final idSet = groupIds.toSet();
-    return _firebaseFirestore.collectionGroup('messages').snapshots().map((snapshot) =>
-        snapshot.docs.where((doc) {
-          if (!idSet.contains(doc.reference.parent.parent?.id)) return false;
-          return doc.data()['isRead'] == false;
-        }).length);
+    return _firebaseFirestore
+        .collectionGroup('messages')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.where((doc) {
+              if (!idSet.contains(doc.reference.parent.parent?.id))
+                return false;
+              return doc.data()['isRead'] == false;
+            }).length);
   }
 
   Future<void> markMessageAsRead(String groupId, String messageId) async {
@@ -229,8 +236,8 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
             snapshot.docs.map((doc) => Comment.fromSnapshot(doc)).toList());
   }
 
-  Future<void> updateComment(String groupId, String messageId,
-      String commentId, String newContent) async {
+  Future<void> updateComment(String groupId, String messageId, String commentId,
+      String newContent) async {
     try {
       await _firebaseFirestore
           .collection('groups')
@@ -340,9 +347,8 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
   Future<String> uploadMessageAttachment(
       String groupId, String fileName, Uint8List bytes) async {
     try {
-      final storageRef = _firebaseStorage
-          .ref()
-          .child('groups/$groupId/messageAttachments/'
+      final storageRef =
+          _firebaseStorage.ref().child('groups/$groupId/messageAttachments/'
               '${DateTime.now().millisecondsSinceEpoch}_$fileName');
       final uploadTask = storageRef.putData(bytes);
       final snapshot = await uploadTask;
@@ -357,7 +363,9 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
   Future<void> addMember(String groupId, GroupMember member) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'members': FieldValue.arrayUnion([member.toMap()])});
+      await groupRef.update({
+        'members': FieldValue.arrayUnion([member.toMap()])
+      });
     } catch (e) {
       throw Exception('Failed to add member: $e');
     }
@@ -406,12 +414,14 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-    // ----------------- Guides -----------------
+  // ----------------- Guides -----------------
 
   Future<void> addGuide(String groupId, Guide guide) async {
     try {
       final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
-      await groupRef.update({'guides': FieldValue.arrayUnion([guide.toMap()])});
+      await groupRef.update({
+        'guides': FieldValue.arrayUnion([guide.toMap()])
+      });
     } catch (e) {
       throw Exception('Failed to add guide: $e');
     }
@@ -455,7 +465,6 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-
   Future<List<GroupInformation>> getGroupsByAgency(String agencyCode) async {
     try {
       final querySnapshot = await _firebaseFirestore
@@ -472,17 +481,26 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
 
   // ----------------- Stats -----------------
 
+  // Matches both the legacy single `agencyCode` field and the newer
+  // `agencyCodes` array — same OR filter the "Brugere" screen
+  // (UsersScreen._buildUsersList) uses, so this stays in sync with the
+  // count bureau staff actually see there instead of undercounting users
+  // who've only migrated to the new field.
   Stream<int> streamUserCount(String agencyCode) {
     return _firebaseFirestore
         .collection('users')
-        .where('agencyCode', isEqualTo: agencyCode)
+        .where(Filter.or(
+          Filter('agencyCode', isEqualTo: agencyCode),
+          Filter('agencyCodes', arrayContains: agencyCode),
+        ))
         .snapshots()
         .map((snapshot) => snapshot.docs.length);
   }
 
   // ----------------- Packing List -----------------
 
-  Future<void> addPackingListCategory(String groupId, PackinglistCategories category) async {
+  Future<void> addPackingListCategory(
+      String groupId, PackinglistCategories category) async {
     final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
     final categoryMap = {
       'categoryName': category.categoryName,
@@ -494,7 +512,10 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     });
   }
 
-  Future<void> updatePackingListCategory(String groupId, PackinglistCategories? oldCategory, PackinglistCategories newCategory) async {
+  Future<void> updatePackingListCategory(
+      String groupId,
+      PackinglistCategories? oldCategory,
+      PackinglistCategories newCategory) async {
     if (oldCategory == null) return;
 
     final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
@@ -503,8 +524,8 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
 
     if (groupData != null && groupData['packinglistCategories'] is List) {
       List<dynamic> categories = List.from(groupData['packinglistCategories']);
-      int indexToUpdate = categories.indexWhere(
-          (cat) => cat['categoryName'] == oldCategory.categoryName);
+      int indexToUpdate = categories
+          .indexWhere((cat) => cat['categoryName'] == oldCategory.categoryName);
 
       if (indexToUpdate != -1) {
         categories[indexToUpdate] = {
@@ -519,14 +540,16 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     }
   }
 
-  Future<void> deletePackingListCategory(String groupId, PackinglistCategories category) async {
+  Future<void> deletePackingListCategory(
+      String groupId, PackinglistCategories category) async {
     final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
     final groupSnapshot = await groupRef.get();
     final groupData = groupSnapshot.data();
 
     if (groupData != null && groupData['packinglistCategories'] is List) {
       List<dynamic> categories = List.from(groupData['packinglistCategories']);
-      categories.removeWhere((cat) => cat['categoryName'] == category.categoryName);
+      categories
+          .removeWhere((cat) => cat['categoryName'] == category.categoryName);
       await groupRef.update({'packinglistCategories': categories});
     }
   }
@@ -546,15 +569,16 @@ class GroupInformationRepository extends BaseGroupInformationRepository {
     });
   }
 
-  Future<void> updateCoupon(String groupId, Coupon oldCoupon, Coupon newCoupon) async {
+  Future<void> updateCoupon(
+      String groupId, Coupon oldCoupon, Coupon newCoupon) async {
     final groupRef = _firebaseFirestore.collection('groups').doc(groupId);
     final groupSnapshot = await groupRef.get();
     final groupData = groupSnapshot.data();
 
     if (groupData != null && groupData['coupons'] is List) {
       List<dynamic> coupons = List.from(groupData['coupons']);
-      int indexToUpdate = coupons.indexWhere(
-          (c) => c['couponName'] == oldCoupon.couponName);
+      int indexToUpdate =
+          coupons.indexWhere((c) => c['couponName'] == oldCoupon.couponName);
 
       if (indexToUpdate != -1) {
         coupons[indexToUpdate] = {

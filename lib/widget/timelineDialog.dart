@@ -226,7 +226,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
       });
       final response = await http.get(
         uri,
-        headers: {'User-Agent': 'BackpackControlpanel/1.0 (contact@backpack-app.dk)'},
+        headers: {'User-Agent': 'BackpackControlpanel/1.0 (kontact@backpack-app.dk)'},
       );
 
       if (response.statusCode == 200) {

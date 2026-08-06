@@ -1,3 +1,4 @@
+import 'package:backend/config/app_colors.dart';
 import 'package:backend/widget/edit_person_dialog.dart';
 import 'package:backend/widget/phone_number_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -591,56 +592,76 @@ class _UsersScreenState extends State<UsersScreen> {
     Widget buildTile(String displayName, List<String> groupNames) {
       return GestureDetector(
         onTap: () => _openEditDialog(context, doc),
-        child: Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: widget.mainColor.withOpacity(0.15),
-              child: Icon(Icons.luggage, color: widget.mainColor),
-            ),
-            title: Text(displayName.isNotEmpty ? displayName : email,
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(email),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      if (groupNames.isEmpty)
-                        _infoChip(Icons.card_travel, 'Ingen rejser',
-                            color: Colors.grey)
-                      else
-                        for (final groupName in groupNames)
-                          _infoChip(Icons.card_travel, groupName,
-                              color: widget.mainColor),
-                      _infoChip(
-                        hasAppInstalled
-                            ? Icons.phone_iphone
-                            : Icons.phone_disabled_outlined,
-                        hasAppInstalled
-                            ? 'App installeret'
-                            : 'App ikke installeret',
-                        color: hasAppInstalled ? Colors.green : Colors.grey,
-                      ),
-                      if (isMultiBureau)
-                        _infoChip(Icons.apartment_outlined,
-                            'Rejser også med et andet bureau',
-                            color: Colors.orange),
-                    ],
-                  ),
-                ],
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              tooltip: 'Slet bruger',
-              onPressed: () => _deleteUser(context, doc),
-            ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: widget.mainColor.withValues(alpha: 0.12),
+                child: Icon(Icons.luggage, color: widget.mainColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(displayName.isNotEmpty ? displayName : email,
+                        style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w600, fontSize: 15)),
+                    const SizedBox(height: 2),
+                    Text(email,
+                        style: GoogleFonts.kanit(
+                            fontSize: 12, color: Colors.grey[600])),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (groupNames.isEmpty)
+                          _infoChip(Icons.card_travel, 'Ingen rejser',
+                              color: Colors.grey)
+                        else
+                          for (final groupName in groupNames)
+                            _infoChip(Icons.card_travel, groupName,
+                                color: widget.mainColor),
+                        _infoChip(
+                          hasAppInstalled
+                              ? Icons.phone_iphone
+                              : Icons.phone_disabled_outlined,
+                          hasAppInstalled
+                              ? 'App installeret'
+                              : 'App ikke installeret',
+                          color: hasAppInstalled ? Colors.green : Colors.grey,
+                        ),
+                        if (isMultiBureau)
+                          _infoChip(Icons.apartment_outlined,
+                              'Rejser også med et andet bureau',
+                              color: Colors.orange),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Slet bruger',
+                onPressed: () => _deleteUser(context, doc),
+              ),
+            ],
           ),
         ),
       );
@@ -710,9 +731,9 @@ class _UsersScreenState extends State<UsersScreen> {
               .call({
             'agencyCode': widget.agencyCode,
             'name': name,
-            'phoneNumber': int.tryParse(
-                    (phone ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
-                0,
+            'phoneNumber':
+                int.tryParse((phone ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
+                    0,
             'email': email,
           });
           return null;
@@ -734,7 +755,7 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.scaffoldGradientStart,
       appBar: widget.isNested
           ? null
           : AppBar(

@@ -22,6 +22,10 @@ class _AgencyOption {
 class GroupIDScreen extends StatefulWidget {
   static const String routeName = '/groupIDscreen';
 
+  // Admins whose agencyCodes include this special code get access to
+  // every bureau, not just their own — the picker then lists them all.
+  static const String superAdminCode = 'BACKPACK-ADMIN';
+
   const GroupIDScreen({super.key});
 
   static Route route() {
@@ -36,10 +40,6 @@ class GroupIDScreen extends StatefulWidget {
 }
 
 class _GroupIDScreenState extends State<GroupIDScreen> {
-  // Admins whose agencyCodes include this special code get access to
-  // every bureau, not just their own — the picker then lists them all.
-  static const String _superAdminCode = 'BACKPACK-ADMIN';
-
   bool _accessDenied = false;
   String? _agencyCode;
   List<_AgencyOption>? _agencyOptions;
@@ -94,7 +94,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
               .toList() ??
           const <String>[];
 
-      if (agencyCodes.contains(_superAdminCode)) {
+      if (agencyCodes.contains(GroupIDScreen.superAdminCode)) {
         final options = await _fetchAllAgencyOptions();
         if (mounted) setState(() => _agencyOptions = options);
         return;
@@ -121,10 +121,13 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
       List<String> agencyCodes) async {
     final options = await Future.wait(agencyCodes.map((code) async {
       try {
-        final doc =
-            await FirebaseFirestore.instance.collection('agency').doc(code).get();
+        final doc = await FirebaseFirestore.instance
+            .collection('agency')
+            .doc(code)
+            .get();
         final name = doc.data()?['agencyName'] as String?;
-        return _AgencyOption(code: code, name: (name?.isNotEmpty ?? false) ? name! : code);
+        return _AgencyOption(
+            code: code, name: (name?.isNotEmpty ?? false) ? name! : code);
       } catch (e) {
         return _AgencyOption(code: code, name: code);
       }
@@ -136,7 +139,8 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
   /// Every bureau in the system — used for BACKPACK-ADMIN accounts, which
   /// aren't scoped to a fixed set of agencyCodes.
   Future<List<_AgencyOption>> _fetchAllAgencyOptions() async {
-    final snapshot = await FirebaseFirestore.instance.collection('agency').get();
+    final snapshot =
+        await FirebaseFirestore.instance.collection('agency').get();
     final options = snapshot.docs.map((doc) {
       final name = doc.data()['agencyName'] as String?;
       return _AgencyOption(
@@ -389,8 +393,8 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
                   ),
                   onPressed: _handleLogout,
                   child: const Text('Log ud',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
             ],
