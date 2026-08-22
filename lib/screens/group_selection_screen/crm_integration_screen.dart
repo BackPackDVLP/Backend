@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:backend/config/design.dart';
 
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/agencyInformation.dart';
@@ -48,8 +49,65 @@ class _CrmOption {
       {this.highlight = _CrmHighlight.none});
 }
 
+// Which HubSpot object a mapped BackPack field, or a rule condition, reads
+// from — 'deal', 'contact', or a custom object's objectTypeId. Kept next to
+// the property name so the same BackPack field/rule can be re-pointed at a
+// different source without losing track of where its value came from.
+class _MappedValue {
+  final String hubspotObjectType;
+  final String hubspotProperty;
+  const _MappedValue(this.hubspotObjectType, this.hubspotProperty);
+}
+
+// A tab in Step 2's source picker: Deal, Contact, or one bureau-enabled
+// custom object.
+class _MappingSource {
+  final String hubspotObjectType;
+  final String label;
+  const _MappingSource(this.hubspotObjectType, this.label);
+}
+
+class _CustomObjectType {
+  final String id;
+  final String label;
+  const _CustomObjectType(this.id, this.label);
+}
+
+// One "IF [property] [operator] [value] THEN template" rule. Mirrors
+// TemplateRule/TemplateRuleCondition in backpack/functions/src/index.ts.
+class _RuleCondition {
+  String? hubspotObjectType;
+  String? hubspotProperty;
+  String operator;
+  // Raw text; comma-separated when operator == 'in', unused for
+  // is_not_empty.
+  String value;
+  _RuleCondition({
+    this.hubspotObjectType,
+    this.hubspotProperty,
+    this.operator = 'equals',
+    this.value = '',
+  });
+}
+
+class _TemplateRule {
+  final String id;
+  String label;
+  _RuleCondition condition;
+  String? templateGroupId;
+  _TemplateRule({
+    required this.id,
+    this.label = '',
+    _RuleCondition? condition,
+    this.templateGroupId,
+  }) : condition = condition ?? _RuleCondition();
+}
+
 class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
-  static const List<_BackpackField> _dealFields = [
+  // Group-level BackPack fields — fillable from the Deal or from any
+  // enabled custom object (a bureau's departure date might live on a
+  // "Booking" custom object rather than the deal itself).
+  static const List<_BackpackField> _groupLevelFields = [
     _BackpackField('groupName', 'Gruppenavn'),
     _BackpackField('departureDate', 'Afrejsedato'),
     _BackpackField('returnDate', 'Hjemrejsedato'),
@@ -57,17 +115,26 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
   // No 'memberName' here on purpose — HubSpot Contacts don't have a single
   // combined name property (only firstname/lastname), so there's nothing
   // to map it to. Member name is built server-side from firstname+lastname
-  // instead — see hubspotWebhook in backpack/functions/src/index.ts.
+  // instead — see hubspotWebhook in backpack/functions/src/index.ts. Member
+  // fields stay Contact-only — members are structurally built from the
+  // deal's associated contacts, not from custom objects.
   static const List<_BackpackField> _contactFields = [
     _BackpackField('memberEmail', 'Medlem – email'),
     _BackpackField('memberPhone', 'Medlem – telefon'),
   ];
 
+  static const Map<String, String> _operatorLabels = {
+    'equals': 'Er lig med',
+    'not_equals': 'Er ikke lig med',
+    'in': 'Er en af',
+    'is_not_empty': 'Er udfyldt',
+  };
+
   static const _steps = [
-    'Forbind',
-    'Kortlæg felter',
-    'Vælg udløser',
-    'Aktivér',
+    'Forbindelse',
+    'Mapping',
+    'Udløser',
+    'Aktivering',
     'Status',
   ];
   static const _stepIcons = [
@@ -104,11 +171,34 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
   List<Map<String, String>> _dealProperties = [];
   List<Map<String, String>> _contactProperties = [];
   List<Map<String, dynamic>> _pipelines = [];
+  List<_CustomObjectType> _customObjectTypes = [];
+
+  // Which custom object types the bureau has turned on as a mapping/rule
+  // source, and their fetched property lists (fetched lazily, only for
+  // enabled types — a portal can have many custom object types a given
+  // bureau never uses).
+  Set<String> _enabledCustomObjectTypeIds = {};
+  final Map<String, List<Map<String, String>>> _customObjectProperties = {};
+  final Set<String> _loadingCustomObjectTypeIds = {};
+  int _selectedSourceTabIndex = 0;
 
   List<Map<String, String>> _templates = [];
   String? _selectedPipelineId;
   String? _selectedStageId;
-  String? _selectedTemplateGroupId;
+  String? _defaultTemplateGroupId;
+  List<_TemplateRule> _templateRules = [];
+
+  // 'notes' (default) preserves the original hardcoded behavior — every
+  // Note attachment on the deal. 'property' pulls from one specific
+  // HubSpot property instead (_documentSourceProperty).
+  String _documentSourceMode = 'notes';
+  _MappedValue? _documentSourceProperty;
+  // Off by default — see the warning copy in _buildMessageSyncCard for why.
+  bool _messageSyncEnabled = false;
+  // Off by default — two-way HubSpot Conversations Inbox sync, separate
+  // mechanism/scope from _messageSyncEnabled above. See the warning copy in
+  // _buildConversationSyncCard for the privacy trade-off.
+  bool _conversationSyncEnabled = false;
 
   bool _isSaving = false;
   String? _saveError;
@@ -116,8 +206,8 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
 
   late final Stream<DocumentSnapshot> _integrationStream;
 
-  final Map<String, String?> _fieldMapping = {
-    for (final f in [..._dealFields, ..._contactFields]) f.key: null,
+  final Map<String, _MappedValue?> _fieldMapping = {
+    for (final f in [..._groupLevelFields, ..._contactFields]) f.key: null,
   };
 
   @override
@@ -133,8 +223,105 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
 
   String get _agencyCode => widget.agencyInfo.agencyCode;
 
-  String _objectTypeForField(String key) =>
-      _dealFields.any((f) => f.key == key) ? 'deal' : 'contact';
+  String _newRuleId() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${_templateRules.length}';
+
+  List<Map<String, String>> _propertiesForSource(String hubspotObjectType) {
+    if (hubspotObjectType == 'deal') return _dealProperties;
+    if (hubspotObjectType == 'contact') return _contactProperties;
+    return _customObjectProperties[hubspotObjectType] ??
+        const <Map<String, String>>[];
+  }
+
+  String _customObjectLabel(String id) {
+    return _customObjectTypes
+        .firstWhere((t) => t.id == id, orElse: () => _CustomObjectType(id, id))
+        .label;
+  }
+
+  String _sourceLabel(String hubspotObjectType) {
+    if (hubspotObjectType == 'deal') return 'Aftale';
+    if (hubspotObjectType == 'contact') return 'Kontakt';
+    return _customObjectLabel(hubspotObjectType);
+  }
+
+  List<_MappingSource> _mappingSources() {
+    return [
+      const _MappingSource('deal', 'Aftale'),
+      const _MappingSource('contact', 'Kontakt'),
+      for (final id in _enabledCustomObjectTypeIds)
+        _MappingSource(id, _customObjectLabel(id)),
+    ];
+  }
+
+  String _propertyLabelFor(String? hubspotObjectType, String? hubspotProperty) {
+    if (hubspotObjectType == null || hubspotProperty == null) return '?';
+    final match = _propertiesForSource(hubspotObjectType)
+        .firstWhere((p) => p['name'] == hubspotProperty,
+            orElse: () => {'label': hubspotProperty});
+    return match['label'] ?? hubspotProperty;
+  }
+
+  // Flat "{source} · {property}" option list spanning every currently-
+  // available source (Deal, Contact, every enabled custom object) — an
+  // optional filter narrows it (e.g. to "file" fieldType properties for
+  // the document-source picker). Shared by the rule builder's condition
+  // dropdown and the document-source property picker.
+  List<MapEntry<String, String>> _sourcePropertyOptions(
+      {bool Function(Map<String, String>)? filter}) {
+    final entries = <MapEntry<String, String>>[];
+    void addFrom(String hubspotObjectType, String sourceLabel,
+        List<Map<String, String>> properties) {
+      for (final p in properties) {
+        final name = p['name'];
+        if (name == null) continue;
+        if (filter != null && !filter(p)) continue;
+        entries.add(MapEntry(
+            '$hubspotObjectType::$name', '$sourceLabel · ${p['label'] ?? name}'));
+      }
+    }
+
+    addFrom('deal', 'Aftale', _dealProperties);
+    addFrom('contact', 'Kontakt', _contactProperties);
+    for (final id in _enabledCustomObjectTypeIds) {
+      addFrom(id, _customObjectLabel(id),
+          _customObjectProperties[id] ?? const <Map<String, String>>[]);
+    }
+    return entries;
+  }
+
+  // Unlike Step 2's field mappings, a rule condition can reference *any*
+  // HubSpot property (e.g. a routing-only field like "referenceCode" that
+  // never fills a BackPack field at all).
+  List<MapEntry<String, String>> _ruleConditionPropertyOptions() =>
+      _sourcePropertyOptions();
+
+  // Narrowed to "file" fieldType properties for the document-source
+  // picker — falls back to every property if none are typed "file" so the
+  // UI doesn't dead-end on an unverified HubSpot type-name assumption.
+  List<MapEntry<String, String>> _fileTypePropertyOptions() {
+    final fileOnly = _sourcePropertyOptions(filter: (p) => p['type'] == 'file');
+    return fileOnly.isNotEmpty ? fileOnly : _sourcePropertyOptions();
+  }
+
+  String _ruleSummary(_TemplateRule rule) {
+    final propLabel = _propertyLabelFor(
+        rule.condition.hubspotObjectType, rule.condition.hubspotProperty);
+    final templateName = rule.templateGroupId == null
+        ? '?'
+        : _templates.firstWhere((t) => t['id'] == rule.templateGroupId,
+            orElse: () => {'name': rule.templateGroupId!})['name']!;
+    switch (rule.condition.operator) {
+      case 'not_equals':
+        return 'HVIS $propLabel ≠ ${rule.condition.value} → $templateName';
+      case 'in':
+        return 'HVIS $propLabel er en af [${rule.condition.value}] → $templateName';
+      case 'is_not_empty':
+        return 'HVIS $propLabel er udfyldt → $templateName';
+      default:
+        return 'HVIS $propLabel = ${rule.condition.value} → $templateName';
+    }
+  }
 
   Future<void> _loadTemplates() async {
     final snap = await FirebaseFirestore.instance
@@ -153,7 +340,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     });
   }
 
-  // Restores a previously saved field mapping/trigger/template — a
+  // Restores a previously saved field mapping/trigger/template rules — a
   // one-time load at screen-open, distinct from the live connection status
   // (streamed below), which reacts continuously instead.
   Future<void> _restoreSavedMapping() async {
@@ -166,11 +353,116 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     setState(() {
       _selectedPipelineId = data['triggerPipelineId'] as String?;
       _selectedStageId = data['triggerStageId'] as String?;
-      _selectedTemplateGroupId = data['templateGroupId'] as String?;
+      // Falls back to the legacy flat `templateGroupId` for any doc saved
+      // before rule-based template selection existed.
+      _defaultTemplateGroupId =
+          (data['defaultTemplateGroupId'] ?? data['templateGroupId'])
+              as String?;
+      _enabledCustomObjectTypeIds =
+          List<String>.from(data['customObjectTypeIds'] as List? ?? [])
+              .toSet();
       for (final m in (data['fieldMappings'] as List<dynamic>? ?? [])) {
         final map = Map<String, dynamic>.from(m as Map);
-        _fieldMapping[map['backpackField'] as String] =
-            map['hubspotProperty'] as String?;
+        final backpackField = map['backpackField'] as String?;
+        final hubspotObjectType = map['hubspotObjectType'] as String?;
+        final hubspotProperty = map['hubspotProperty'] as String?;
+        if (backpackField == null ||
+            hubspotObjectType == null ||
+            hubspotProperty == null) {
+          continue;
+        }
+        _fieldMapping[backpackField] =
+            _MappedValue(hubspotObjectType, hubspotProperty);
+      }
+      _templateRules = (data['templateRules'] as List<dynamic>? ?? [])
+          .map((r) {
+            final map = Map<String, dynamic>.from(r as Map);
+            final condition =
+                Map<String, dynamic>.from(map['condition'] as Map? ?? {});
+            final rawValue = condition['value'];
+            return _TemplateRule(
+              id: map['id'] as String? ?? _newRuleId(),
+              label: map['label'] as String? ?? '',
+              condition: _RuleCondition(
+                hubspotObjectType: condition['hubspotObjectType'] as String?,
+                hubspotProperty: condition['hubspotProperty'] as String?,
+                operator: condition['operator'] as String? ?? 'equals',
+                value: rawValue is List
+                    ? rawValue.join(', ')
+                    : (rawValue as String? ?? ''),
+              ),
+              templateGroupId: map['templateGroupId'] as String?,
+            );
+          })
+          .toList();
+      final documentSource =
+          Map<String, dynamic>.from(data['documentSource'] as Map? ?? {});
+      _documentSourceMode = documentSource['mode'] as String? ?? 'notes';
+      final docSourceObjectType = documentSource['hubspotObjectType'] as String?;
+      final docSourceProperty = documentSource['hubspotProperty'] as String?;
+      _documentSourceProperty =
+          (docSourceObjectType != null && docSourceProperty != null)
+              ? _MappedValue(docSourceObjectType, docSourceProperty)
+              : null;
+      _messageSyncEnabled = data['messageSyncEnabled'] as bool? ?? false;
+      _conversationSyncEnabled =
+          data['conversationSyncEnabled'] as bool? ?? false;
+    });
+    if (_enabledCustomObjectTypeIds.isNotEmpty) {
+      unawaited(_loadCustomObjectProperties(_enabledCustomObjectTypeIds.toList()));
+    }
+  }
+
+  // Fetches property lists for one or more custom object types — called
+  // when a bureau turns on a custom object as a source, and once at
+  // restore-time for any already-enabled ones. Skips types whose
+  // properties are already cached.
+  Future<void> _loadCustomObjectProperties(List<String> objectTypeIds) async {
+    final toFetch = objectTypeIds
+        .where((id) => !_customObjectProperties.containsKey(id))
+        .toList();
+    if (toFetch.isEmpty) return;
+    setState(() => _loadingCustomObjectTypeIds.addAll(toFetch));
+    try {
+      final result = await FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('fetchHubspotObjectProperties')
+          .call({'agencyCode': _agencyCode, 'objectTypeIds': toFetch});
+      final data = result.data as Map<dynamic, dynamic>;
+      final properties = Map<String, dynamic>.from(data['properties'] as Map? ?? {});
+      if (!mounted) return;
+      setState(() {
+        for (final id in toFetch) {
+          _customObjectProperties[id] =
+              (properties[id] as List<dynamic>? ?? [])
+                  .map((p) => Map<String, String>.from(p as Map))
+                  .toList();
+        }
+        _loadingCustomObjectTypeIds.removeAll(toFetch);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingCustomObjectTypeIds.removeAll(toFetch));
+    }
+  }
+
+  void _toggleCustomObjectType(String id) {
+    setState(() {
+      if (_enabledCustomObjectTypeIds.contains(id)) {
+        _enabledCustomObjectTypeIds.remove(id);
+        // Clear any field mappings sourced from this type — otherwise
+        // they'd silently point at a source no longer offered anywhere in
+        // the UI.
+        for (final key in _fieldMapping.keys.toList()) {
+          if (_fieldMapping[key]?.hubspotObjectType == id) {
+            _fieldMapping[key] = null;
+          }
+        }
+        if (_selectedSourceTabIndex >= _mappingSources().length) {
+          _selectedSourceTabIndex = 0;
+        }
+      } else {
+        _enabledCustomObjectTypeIds.add(id);
+        unawaited(_loadCustomObjectProperties([id]));
       }
     });
   }
@@ -253,8 +545,18 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
         _pipelines = (data['pipelines'] as List<dynamic>? ?? [])
             .map((p) => Map<String, dynamic>.from(p as Map))
             .toList();
+        _customObjectTypes = (data['customObjectTypes'] as List<dynamic>? ?? [])
+            .map((c) {
+              final map = Map<String, dynamic>.from(c as Map);
+              return _CustomObjectType(map['id'] as String,
+                  map['label'] as String? ?? map['id'] as String);
+            })
+            .toList();
         _isLoadingSchema = false;
       });
+      if (_enabledCustomObjectTypeIds.isNotEmpty) {
+        unawaited(_loadCustomObjectProperties(_enabledCustomObjectTypeIds.toList()));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingSchema = false);
@@ -264,8 +566,22 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
   Future<void> _saveMapping({required bool activate}) async {
     if (_selectedPipelineId == null ||
         _selectedStageId == null ||
-        _selectedTemplateGroupId == null) {
-      setState(() => _saveError = 'Vælg pipeline, trin og skabelon først');
+        _defaultTemplateGroupId == null) {
+      setState(
+          () => _saveError = 'Vælg pipeline, trin og standardskabelon først');
+      return;
+    }
+    final incompleteRule = _templateRules.any((r) =>
+        r.condition.hubspotObjectType == null ||
+        r.condition.hubspotProperty == null ||
+        r.templateGroupId == null);
+    if (incompleteRule) {
+      setState(() =>
+          _saveError = 'Udfyld alle skabelonregler, eller fjern ufuldstændige regler');
+      return;
+    }
+    if (_documentSourceMode == 'property' && _documentSourceProperty == null) {
+      setState(() => _saveError = 'Vælg et HubSpot-felt som dokumentkilde');
       return;
     }
     setState(() {
@@ -275,31 +591,60 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     try {
       final fieldMappings =
           _fieldMapping.entries.where((e) => e.value != null).map((e) {
-        final objectType = _objectTypeForField(e.key);
-        final properties =
-            objectType == 'deal' ? _dealProperties : _contactProperties;
+        final mapped = e.value!;
+        final properties = _propertiesForSource(mapped.hubspotObjectType);
         final propertyType = properties.firstWhere(
-          (p) => p['name'] == e.value,
+          (p) => p['name'] == mapped.hubspotProperty,
           orElse: () => const {},
         )['type'];
         return {
           'backpackField': e.key,
-          'hubspotObjectType': objectType,
-          'hubspotProperty': e.value,
+          'hubspotObjectType': mapped.hubspotObjectType,
+          'hubspotProperty': mapped.hubspotProperty,
           // The property's HubSpot type (e.g. "date"/"datetime"), so
           // the webhook can convert its value correctly regardless of
           // which HubSpot field widget was mapped.
           'hubspotFieldType': propertyType,
         };
       }).toList();
+      final templateRules = _templateRules
+          .map((r) => {
+                'id': r.id,
+                if (r.label.isNotEmpty) 'label': r.label,
+                'condition': {
+                  'hubspotObjectType': r.condition.hubspotObjectType,
+                  'hubspotProperty': r.condition.hubspotProperty,
+                  'operator': r.condition.operator,
+                  'value': r.condition.operator == 'in'
+                      ? r.condition.value
+                          .split(',')
+                          .map((v) => v.trim())
+                          .where((v) => v.isNotEmpty)
+                          .toList()
+                      : r.condition.value,
+                },
+                'templateGroupId': r.templateGroupId,
+              })
+          .toList();
       await FirebaseFunctions.instanceFor(region: 'europe-west1')
           .httpsCallable('saveHubspotMapping')
           .call({
         'agencyCode': _agencyCode,
         'fieldMappings': fieldMappings,
+        'customObjectTypeIds': _enabledCustomObjectTypeIds.toList(),
         'triggerPipelineId': _selectedPipelineId,
         'triggerStageId': _selectedStageId,
-        'templateGroupId': _selectedTemplateGroupId,
+        'templateRules': templateRules,
+        'defaultTemplateGroupId': _defaultTemplateGroupId,
+        'documentSource': {
+          'mode': _documentSourceMode,
+          if (_documentSourceProperty != null)
+            'hubspotObjectType': _documentSourceProperty!.hubspotObjectType,
+          if (_documentSourceProperty != null)
+            'hubspotProperty': _documentSourceProperty!.hubspotProperty,
+        },
+        'messageSyncEnabled': _messageSyncEnabled,
+        'conversationSyncEnabled': _conversationSyncEnabled,
         'activate': activate,
       });
       if (!mounted) return;
@@ -432,7 +777,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.lock_outline, size: 36, color: Colors.grey[400]),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     Text(
                       'Kun bureauets ejer kan konfigurere CRM-integrationen.',
                       textAlign: TextAlign.center,
@@ -481,7 +826,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                   _buildStepIndicator(themeColor),
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(AppSpacing.xl),
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 220),
                         transitionBuilder: (child, animation) => FadeTransition(
@@ -564,7 +909,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: themeColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: AppRadii.lgRadius,
             ),
             child: Text('HubSpot',
                 style: GoogleFonts.kanit(
@@ -577,86 +922,69 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     );
   }
 
+  // Page switcher, not a progress timeline — no connecting lines between
+  // steps, each one is its own tappable pill (same visual language as
+  // _buildSourceTabs in Step 2), scrollable so it never has to squeeze
+  // icon+label into an equal-width segment the way the old line-and-circle
+  // layout did.
   Widget _buildStepIndicator(Color themeColor) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      child: Row(
-        children: List.generate(_steps.length, (i) {
-          final isActive = i == _currentStep;
-          final isDone = i < _currentStep;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => _goTo(i),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      if (i > 0)
-                        Expanded(
-                          child: Container(
-                            height: 2,
-                            color: isDone || isActive
-                                ? themeColor
-                                : Colors.grey[300],
-                          ),
-                        ),
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isDone || isActive ? themeColor : Colors.white,
-                          border: Border.all(
-                            color: isDone || isActive
-                                ? themeColor
-                                : Colors.grey[300]!,
-                            width: 1.5,
-                          ),
-                          boxShadow: isActive
-                              ? [
-                                  BoxShadow(
-                                    color: themeColor.withValues(alpha: 0.35),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: isDone
-                            ? const Icon(Icons.check,
-                                size: 15, color: Colors.white)
-                            : Icon(_stepIcons[i],
-                                size: 14,
-                                color:
-                                    isActive ? Colors.white : Colors.grey[400]),
+    // No enclosing white bar — that flat, square-cornered strip is what
+    // read as "hard-cornered" regardless of how rounded the pills inside
+    // it were. The pills float directly on the scaffold's grey background
+    // instead, each one a soft rounded card defined by a shadow rather
+    // than a border.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(_steps.length, (i) {
+            final isActive = i == _currentStep;
+            return Padding(
+              padding: EdgeInsets.only(right: i == _steps.length - 1 ? 0 : 8),
+              child: GestureDetector(
+                onTap: () => _goTo(i),
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isActive ? themeColor : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isActive
+                            ? themeColor.withValues(alpha: 0.3)
+                            : Colors.black.withValues(alpha: 0.06),
+                        blurRadius: isActive ? 10 : 6,
+                        offset: const Offset(0, 3),
                       ),
-                      if (i < _steps.length - 1)
-                        Expanded(
-                          child: Container(
-                            height: 2,
-                            color: isDone ? themeColor : Colors.grey[300],
-                          ),
-                        ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _steps[i],
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                        fontSize: 11,
-                        fontWeight:
-                            isActive ? FontWeight.w600 : FontWeight.w400,
-                        color: isActive ? Colors.black87 : Colors.grey[500]),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_stepIcons[i],
+                          size: 15,
+                          color: isActive
+                              ? _onThemeColor(themeColor)
+                              : Colors.grey[500]),
+                      const SizedBox(width: 6),
+                      Text(_steps[i],
+                          style: GoogleFonts.kanit(
+                              fontSize: 12.5,
+                              fontWeight:
+                                  isActive ? FontWeight.w700 : FontWeight.w500,
+                              color: isActive
+                                  ? _onThemeColor(themeColor)
+                                  : Colors.grey[700])),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -683,20 +1011,15 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     }
   }
 
-  Widget _card({required Widget child, EdgeInsetsGeometry? padding}) {
+  Widget _card({Key? key, required Widget child, EdgeInsetsGeometry? padding}) {
     return Container(
+      key: key,
       width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(20),
+      padding: padding ?? const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       ),
       child: child,
     );
@@ -715,24 +1038,22 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
               height: 40,
               decoration: BoxDecoration(
                 color: (iconColor ?? Colors.grey).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.mdRadius,
               ),
               alignment: Alignment.center,
               child: Icon(icon, color: iconColor ?? Colors.grey[700], size: 20),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
           ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: GoogleFonts.kanit(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
+                    style: AppTextStyles.headingBold()),
+                const SizedBox(height: AppSpacing.xs),
                 Text(subtitle,
-                    style: GoogleFonts.kanit(
-                        fontSize: 13, color: Colors.grey[600])),
+                    style: AppTextStyles.body(color: Colors.grey[600])),
               ],
             ),
           ),
@@ -768,7 +1089,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
             children: [
               _sectionLabel('CRM-system'),
               _buildCrmSelector(themeColor),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               if (connected) ...[
                 _statusChip(
                   icon: Icons.check_circle,
@@ -798,15 +1119,14 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                       foregroundColor: _onThemeColor(themeColor),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: AppRadii.mdRadius),
                     ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   'Åbner HubSpot i en ny fane. Log ind og godkend adgangen — denne side opdaterer sig selv, når I er forbundet.',
-                  style: GoogleFonts.kanit(
-                      fontSize: 11.5, color: Colors.grey[500]),
+                  style: AppTextStyles.caption(color: Colors.grey[500]),
                 ),
                 if (_oauthError != null) ...[
                   const SizedBox(height: 14),
@@ -902,7 +1222,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                             color: isBadgeHighlighted
                                 ? _highlightBg
                                 : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppRadii.lgRadius,
                             border: isBadgeHighlighted
                                 ? Border.all(color: _highlightBorder, width: 1)
                                 : null,
@@ -933,98 +1253,514 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
   // Step 2 — Field mapping ----------------------------------------------
 
   Widget _buildMappingStep(Color themeColor) {
+    final sources = _mappingSources();
+    if (_selectedSourceTabIndex >= sources.length) _selectedSourceTabIndex = 0;
+    final selectedSource = sources[_selectedSourceTabIndex];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepHeading('Kortlæg felter',
-            'Vælg hvilket felt fra HubSpot der skal udfylde hvert BackPack-felt.',
+            'Vælg hvilket HubSpot-felt — fra aftalen, en kontakt, eller et custom object — der skal udfylde hvert BackPack-felt.',
             icon: Icons.swap_horiz_rounded, iconColor: themeColor),
         if (_isLoadingSchema)
-          const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator()))
+          _mappingSkeleton()
         else ...[
-          _card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionLabel('Aftalefelter'),
-                for (final field in _dealFields)
-                  _buildMappingRow(field, _dealProperties),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionLabel('Kontaktfelter'),
-                for (final field in _contactFields)
-                  _buildMappingRow(field, _contactProperties),
-              ],
-            ),
-          ),
+          if (_customObjectTypes.isNotEmpty) ...[
+            _sectionLabel('Custom objects som datakilde'),
+            _buildCustomObjectPicker(themeColor),
+            const SizedBox(height: 18),
+          ],
+          _buildSourceTabs(themeColor, sources),
+          const SizedBox(height: AppSpacing.md),
+          _buildSourceMappingContent(selectedSource),
+          const SizedBox(height: AppSpacing.xl),
+          _buildDocumentSourceCard(themeColor),
+          const SizedBox(height: AppSpacing.lg),
+          _buildMessageSyncCard(themeColor),
+          const SizedBox(height: AppSpacing.lg),
+          _buildConversationSyncCard(themeColor),
         ],
       ],
     );
   }
 
-  Widget _buildMappingRow(
-      _BackpackField field, List<Map<String, String>> options) {
+  Widget _buildModeToggle({
+    required String value,
+    required List<MapEntry<String, String>> options,
+    required Color themeColor,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Row(
+      children: [
+        for (final opt in options)
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: opt.key == options.last.key ? 0 : 8),
+              child: GestureDetector(
+                onTap: () => onChanged(opt.key),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: value == opt.key
+                        ? themeColor.withValues(alpha: 0.1)
+                        : Colors.grey[50],
+                    borderRadius: AppRadii.smRadius,
+                    border: Border.all(
+                        color: value == opt.key ? themeColor : Colors.grey[300]!,
+                        width: value == opt.key ? 1.5 : 1),
+                  ),
+                  child: Text(opt.value,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                          fontSize: 12,
+                          fontWeight:
+                              value == opt.key ? FontWeight.w600 : FontWeight.w500,
+                          color:
+                              value == opt.key ? Colors.black87 : Colors.grey[600])),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDocumentSourceCard(Color themeColor) {
+    final propertyKey = _documentSourceProperty != null
+        ? '${_documentSourceProperty!.hubspotObjectType}::${_documentSourceProperty!.hubspotProperty}'
+        : null;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel('Dokumenter'),
+          Text(
+              'Vælg hvor jeres rejsedokumenter (billetter, bekræftelser mv.) skal hentes fra — eller slå det fra, hvis I ikke vil importere dokumenter automatisk.',
+              style: AppTextStyles.caption()),
+          const SizedBox(height: AppSpacing.md),
+          _buildModeToggle(
+            value: _documentSourceMode,
+            themeColor: themeColor,
+            options: const [
+              MapEntry('disabled', 'Deaktiveret'),
+              MapEntry('notes', 'HubSpot Notes'),
+              MapEntry('property', 'Bestemt felt'),
+            ],
+            onChanged: (v) => setState(() => _documentSourceMode = v),
+          ),
+          if (_documentSourceMode == 'property') ...[
+            const SizedBox(height: AppSpacing.md),
+            _buildIdDropdown(
+              value: propertyKey,
+              items: _fileTypePropertyOptions(),
+              onChanged: (v) {
+                if (v == null) return;
+                final parts = v.split('::');
+                setState(() {
+                  _documentSourceProperty =
+                      _MappedValue(parts.first, parts.sublist(1).join('::'));
+                });
+              },
+              hint: 'Vælg HubSpot-felt',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageSyncCard(Color themeColor) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: _messageSyncEnabled ? themeColor.withValues(alpha: 0.06) : Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        border: Border.all(
+            color: _messageSyncEnabled
+                ? themeColor.withValues(alpha: 0.3)
+                : Colors.grey[200]!),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Beskeder fra HubSpot',
+                        style: GoogleFonts.kanit(
+                            fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(
+                        'Hver HubSpot-note på en aftale bliver til en besked, rejsende kan se i appen, når deres gruppe findes.',
+                        style: AppTextStyles.caption()),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _messageSyncEnabled,
+                activeThumbColor: themeColor,
+                onChanged: (v) => setState(() => _messageSyncEnabled = v),
+              ),
+            ],
+          ),
+          if (_messageSyncEnabled) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: AppRadii.smRadius,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange[800]),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                        'Alle notes bliver sendt — også interne, der ikke er skrevet til rejsende. Skriv kun i HubSpot-notes det er okay rejsende ser.',
+                        style: GoogleFonts.kanit(
+                            fontSize: 11, color: Colors.orange[900])),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Separate mechanism/scope from _buildMessageSyncCard above: this syncs
+  // HubSpot's actual Conversations Inbox (a staff reply there, and a
+  // traveler's own comment back), not the deal Notes timeline.
+  Widget _buildConversationSyncCard(Color themeColor) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: _conversationSyncEnabled
+            ? themeColor.withValues(alpha: 0.06)
+            : Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        border: Border.all(
+            color: _conversationSyncEnabled
+                ? themeColor.withValues(alpha: 0.3)
+                : Colors.grey[200]!),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('To-vejs samtale via HubSpot Inbox',
+                        style: GoogleFonts.kanit(
+                            fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(
+                        'Skriv til en rejsende direkte fra jeres HubSpot Inbox — det dukker op som en besked i appen. Svarer den rejsende, sender vi det tilbage til samme samtale i HubSpot.',
+                        style: AppTextStyles.caption()),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _conversationSyncEnabled,
+                activeThumbColor: themeColor,
+                onChanged: (v) => setState(() => _conversationSyncEnabled = v),
+              ),
+            ],
+          ),
+          if (_conversationSyncEnabled) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: AppRadii.smRadius,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 16, color: Colors.orange[800]),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                        'En rejsendes svar bliver synligt for hele deres rejsegruppe i appen, ligesom andre kommentarer — ikke kun for jer. Skriv kun i HubSpot Inbox det er okay hele gruppen ser.',
+                        style: GoogleFonts.kanit(
+                            fontSize: 11, color: Colors.orange[900])),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _mappingSkeleton() {
+    Widget bar(double width) => Container(
+          width: width,
+          height: 12,
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          bar(120),
+          const SizedBox(height: AppSpacing.sm),
+          for (int i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAFAFB),
+                  borderRadius: AppRadii.mdRadius,
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomObjectPicker(Color themeColor) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _customObjectTypes.map((t) {
+        final enabled = _enabledCustomObjectTypeIds.contains(t.id);
+        return GestureDetector(
+          onTap: () => _toggleCustomObjectType(t.id),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: enabled ? themeColor.withValues(alpha: 0.1) : Colors.grey[50],
+              borderRadius: AppRadii.lgRadius,
+              border: Border.all(
+                  color: enabled ? themeColor : Colors.grey[300]!,
+                  width: enabled ? 1.5 : 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(enabled ? Icons.check_circle : Icons.add_circle_outline,
+                    size: 15, color: enabled ? themeColor : Colors.grey[400]),
+                const SizedBox(width: 6),
+                Text(t.label,
+                    style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight:
+                            enabled ? FontWeight.w600 : FontWeight.w500,
+                        color: enabled ? Colors.black87 : Colors.grey[600])),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSourceTabs(Color themeColor, List<_MappingSource> sources) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (int i = 0; i < sources.length; i++)
+            Padding(
+              padding: EdgeInsets.only(right: i == sources.length - 1 ? 0 : 8),
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedSourceTabIndex = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _selectedSourceTabIndex == i
+                        ? themeColor
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                        color: _selectedSourceTabIndex == i
+                            ? themeColor
+                            : Colors.grey[300]!),
+                    boxShadow: _selectedSourceTabIndex == i
+                        ? [
+                            BoxShadow(
+                              color: themeColor.withValues(alpha: 0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(sources[i].label,
+                      style: GoogleFonts.kanit(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: _selectedSourceTabIndex == i
+                              ? _onThemeColor(themeColor)
+                              : Colors.grey[700])),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceMappingContent(_MappingSource source) {
+    if (source.hubspotObjectType == 'contact') {
+      return _card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionLabel('Kontaktfelter'),
+            for (final field in _contactFields)
+              _buildMappingRow(field, _contactProperties, source.hubspotObjectType),
+          ],
+        ),
+      );
+    }
+
+    final isCustomObject = source.hubspotObjectType != 'deal';
+    if (isCustomObject &&
+        _loadingCustomObjectTypeIds.contains(source.hubspotObjectType)) {
+      return _card(
+        child: const Padding(
+          padding: EdgeInsets.all(AppSpacing.xxl),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    final options = isCustomObject
+        ? (_customObjectProperties[source.hubspotObjectType] ??
+            const <Map<String, String>>[])
+        : _dealProperties;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(isCustomObject ? '${source.label} · felter' : 'Aftalefelter'),
+          if (isCustomObject && options.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                  'Ingen felter fundet for ${source.label} på jeres HubSpot-konto.',
+                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[500])),
+            )
+          else
+            for (final field in _groupLevelFields)
+              _buildMappingRow(field, options, source.hubspotObjectType),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMappingRow(_BackpackField field,
+      List<Map<String, String>> options, String sourceObjectType) {
+    final current = _fieldMapping[field.key];
+    final isMappedHere = current?.hubspotObjectType == sourceObjectType;
+    final mappedElsewhereLabel =
+        current != null && !isMappedHere ? _sourceLabel(current.hubspotObjectType) : null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
           color: const Color(0xFFFAFAFB),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           border: Border.all(color: Colors.grey[200]!),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 128,
-              child: Text(field.label,
-                  style: GoogleFonts.kanit(
-                      fontSize: 13, fontWeight: FontWeight.w500)),
-            ),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child:
-                  Icon(Icons.arrow_forward, size: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _fieldMapping[field.key],
-                isExpanded: true,
-                style: GoogleFonts.kanit(fontSize: 13, color: Colors.black87),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
+            Row(
+              children: [
+                SizedBox(
+                  width: 128,
+                  child: Text(field.label,
+                      style: GoogleFonts.kanit(
+                          fontSize: 13, fontWeight: FontWeight.w500)),
                 ),
-                hint: Text('Vælg HubSpot-felt',
-                    style: GoogleFonts.kanit(
-                        fontSize: 13, color: Colors.grey[500])),
-                items: options
-                    .map((p) => DropdownMenuItem(
-                        value: p['name'],
-                        child: Text(p['label'] ?? p['name'] ?? '',
-                            overflow: TextOverflow.ellipsis)))
-                    .toList(),
-                onChanged: (value) =>
-                    setState(() => _fieldMapping[field.key] = value),
-              ),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(Icons.arrow_forward,
+                      size: 12, color: Colors.grey[600]),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: isMappedHere ? current!.hubspotProperty : null,
+                    isExpanded: true,
+                    style:
+                        AppTextStyles.body(),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    hint: Text(
+                        mappedElsewhereLabel != null
+                            ? 'Ikke fra $mappedElsewhereLabel'
+                            : 'Vælg HubSpot-felt',
+                        style: AppTextStyles.body(color: Colors.grey[500])),
+                    items: options
+                        .map((p) => DropdownMenuItem(
+                            value: p['name'],
+                            child: Text(p['label'] ?? p['name'] ?? '',
+                                overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      _fieldMapping[field.key] = value == null
+                          ? null
+                          : _MappedValue(sourceObjectType, value);
+                    }),
+                  ),
+                ),
+              ],
             ),
+            if (mappedElsewhereLabel != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, left: 136),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 12, color: Colors.grey[400]),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text('Kortlagt fra $mappedElsewhereLabel',
+                        style: GoogleFonts.kanit(
+                            fontSize: 10.5, color: Colors.grey[500])),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -1038,10 +1774,6 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
         (p) => p['id'] == _selectedPipelineId,
         orElse: () => const {});
     final stages = (pipeline['stages'] as List<dynamic>? ?? []);
-    final selectedTemplateName = _selectedTemplateGroupId == null
-        ? null
-        : _templates.firstWhere((t) => t['id'] == _selectedTemplateGroupId,
-            orElse: () => {'name': _selectedTemplateGroupId!})['name'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1070,7 +1802,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                 }),
                 hint: 'Vælg pipeline',
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Text('Trin der udløser gruppeoprettelse',
                   style: GoogleFonts.kanit(
                       fontSize: 13, fontWeight: FontWeight.w500)),
@@ -1087,51 +1819,256 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        _card(
-          child: Column(
+        const SizedBox(height: AppSpacing.xl),
+        _sectionLabel('Skabelonregler'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+              'Regler afprøves i rækkefølge — den første der matcher aftalen bruges. Ingen match falder tilbage til standardskabelonen nedenfor.',
+              style: AppTextStyles.caption()),
+        ),
+        if (_templateRules.isEmpty)
+          _card(
+            child: Column(
+              children: [
+                Icon(Icons.rule_rounded, size: 26, color: Colors.grey[300]),
+                const SizedBox(height: AppSpacing.sm),
+                Text('Ingen regler endnu — alle aftaler bruger standardskabelonen.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[500])),
+              ],
+            ),
+          )
+        else
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: (oldIndex, newIndex) => setState(() {
+              if (newIndex > oldIndex) newIndex -= 1;
+              final item = _templateRules.removeAt(oldIndex);
+              _templateRules.insert(newIndex, item);
+            }),
+            children: [
+              for (int i = 0; i < _templateRules.length; i++)
+                _buildRuleCard(i, themeColor),
+            ],
+          ),
+        const SizedBox(height: AppSpacing.sm),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () =>
+                setState(() => _templateRules.add(_TemplateRule(id: _newRuleId()))),
+            icon: Icon(Icons.add, size: 18, color: themeColor),
+            label: Text('Tilføj regel',
+                style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w600, color: themeColor)),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: themeColor.withValues(alpha: 0.4)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape:
+                  RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        _buildDefaultTemplateCard(),
+      ],
+    );
+  }
+
+  Widget _buildRuleCard(int index, Color themeColor) {
+    final rule = _templateRules[index];
+    final propertyOptions = _ruleConditionPropertyOptions();
+    final propertyKey =
+        rule.condition.hubspotObjectType != null && rule.condition.hubspotProperty != null
+            ? '${rule.condition.hubspotObjectType}::${rule.condition.hubspotProperty}'
+            : null;
+    final isReady = propertyKey != null && rule.templateGroupId != null;
+
+    return _card(
+      key: ValueKey(rule.id),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                    color: themeColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle),
+                alignment: Alignment.center,
+                child: Text('${index + 1}',
+                    style: GoogleFonts.kanit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: themeColor)),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text('Regel ${index + 1}',
+                    style: GoogleFonts.kanit(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+              ReorderableDragStartListener(
+                index: index,
+                child: Icon(Icons.drag_indicator, size: 18, color: Colors.grey[400]),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _templateRules.removeAt(index)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _ruleFieldLabel('HVIS'),
+          const SizedBox(height: 6),
+          _buildIdDropdown(
+            value: propertyKey,
+            items: propertyOptions,
+            onChanged: (v) {
+              if (v == null) return;
+              final parts = v.split('::');
+              setState(() {
+                rule.condition.hubspotObjectType = parts.first;
+                rule.condition.hubspotProperty = parts.sublist(1).join('::');
+              });
+            },
+            hint: 'Vælg HubSpot-felt',
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionLabel('Skabelon der skal duplikeres'),
-              _buildIdDropdown(
-                value: _selectedTemplateGroupId,
-                items: _templates
-                    .map((t) => MapEntry(t['id']!, t['name']!))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedTemplateGroupId = v),
-                hint: _templates.isEmpty
-                    ? 'Ingen skabeloner oprettet endnu'
-                    : 'Vælg skabelon',
+              Expanded(
+                flex: 2,
+                child: _buildIdDropdown(
+                  value: rule.condition.operator,
+                  items: _operatorLabels.entries
+                      .map((e) => MapEntry(e.key, e.value))
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => rule.condition.operator = v ?? 'equals'),
+                  hint: 'Vælg',
+                ),
               ),
-              if (selectedTemplateName != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: themeColor.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.copy_all_rounded, size: 16, color: themeColor),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                            'Nye grupper bygges ud fra "$selectedTemplateName"',
-                            style: GoogleFonts.kanit(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: themeColor)),
+              if (rule.condition.operator != 'is_not_empty') ...[
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    key: ValueKey('${rule.id}-value'),
+                    initialValue: rule.condition.value,
+                    style: AppTextStyles.body(),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                      isDense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      hintText: rule.condition.operator == 'in'
+                          ? 'fx TEST1234, TEST5678'
+                          : 'Værdi',
+                      hintStyle:
+                          GoogleFonts.kanit(fontSize: 12, color: Colors.grey[400]),
+                      border: OutlineInputBorder(
+                        borderRadius: AppRadii.smRadius,
+                        borderSide: BorderSide(color: Colors.grey[300]!),
                       ),
-                    ],
+                    ),
+                    onChanged: (v) => rule.condition.value = v,
                   ),
                 ),
               ],
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Icon(Icons.arrow_downward_rounded, size: 14, color: Colors.grey[400]),
+              const SizedBox(width: 6),
+              _ruleFieldLabel('SÅ BRUG SKABELON'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _buildIdDropdown(
+            value: rule.templateGroupId,
+            items: _templates.map((t) => MapEntry(t['id']!, t['name']!)).toList(),
+            onChanged: (v) => setState(() => rule.templateGroupId = v),
+            hint: _templates.isEmpty
+                ? 'Ingen skabeloner oprettet endnu'
+                : 'Vælg skabelon',
+          ),
+          if (isReady) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: themeColor.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_ruleSummary(rule),
+                  style: GoogleFonts.kanit(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: themeColor)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _ruleFieldLabel(String text) => Text(text,
+      style: GoogleFonts.kanit(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: Colors.grey[400]));
+
+  Widget _buildDefaultTemplateCard() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_outlined, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 6),
+              Text('STANDARDSKABELON',
+                  style: GoogleFonts.kanit(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      color: Colors.grey[500])),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text('Bruges når ingen af reglerne ovenfor matcher aftalen.',
+              style: AppTextStyles.caption()),
+          const SizedBox(height: 10),
+          _buildIdDropdown(
+            value: _defaultTemplateGroupId,
+            items: _templates.map((t) => MapEntry(t['id']!, t['name']!)).toList(),
+            onChanged: (v) => setState(() => _defaultTemplateGroupId = v),
+            hint: _templates.isEmpty
+                ? 'Ingen skabeloner oprettet endnu'
+                : 'Vælg standardskabelon',
+          ),
+        ],
+      ),
     );
   }
 
@@ -1163,7 +2100,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
             width: 110,
             child: Text(label,
                 style:
-                    GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600])),
+                    AppTextStyles.body(color: Colors.grey[600])),
           ),
           Expanded(
             child: Text(value,
@@ -1183,10 +2120,14 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     final allMapped = mappedCount == _fieldMapping.length;
     final hasTrigger = _selectedPipelineId != null && _selectedStageId != null;
     final activated = status == 'active';
-    final templateName = _selectedTemplateGroupId == null
+    final defaultTemplateName = _defaultTemplateGroupId == null
         ? 'Ikke valgt'
-        : _templates.firstWhere((t) => t['id'] == _selectedTemplateGroupId,
-            orElse: () => {'name': _selectedTemplateGroupId!})['name']!;
+        : _templates.firstWhere((t) => t['id'] == _defaultTemplateGroupId,
+            orElse: () => {'name': _defaultTemplateGroupId!})['name']!;
+    final rulesComplete = _templateRules.every((r) =>
+        r.condition.hubspotObjectType != null &&
+        r.condition.hubspotProperty != null &&
+        r.templateGroupId != null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1207,18 +2148,24 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
               _checklistRow(
                   'Udløser', hasTrigger ? _triggerSummaryLabel() : 'Ikke valgt',
                   complete: hasTrigger),
-              _checklistRow('Skabelon', templateName,
-                  complete: _selectedTemplateGroupId != null),
+              _checklistRow(
+                  'Regler',
+                  _templateRules.isEmpty
+                      ? 'Ingen regler (kun standard)'
+                      : '${_templateRules.length} regel${_templateRules.length == 1 ? '' : 'er'}',
+                  complete: rulesComplete),
+              _checklistRow('Standardskabelon', defaultTemplateName,
+                  complete: _defaultTemplateGroupId != null),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           decoration: BoxDecoration(
             color: themeColor.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadii.lgRadius,
             border: Border.all(color: themeColor.withValues(alpha: 0.25)),
           ),
           child: Column(
@@ -1236,8 +2183,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                         const SizedBox(height: 2),
                         Text(
                             'Nye aftaler begynder at oprette grupper automatisk',
-                            style: GoogleFonts.kanit(
-                                fontSize: 11.5, color: Colors.grey[600])),
+                            style: AppTextStyles.caption()),
                       ],
                     ),
                   ),
@@ -1254,7 +2200,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                 const LinearProgressIndicator(),
               ],
               if (_saveError != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 _statusChip(
                     icon: Icons.error_outline,
                     color: Colors.red,
@@ -1290,7 +2236,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                     color: isActive ? Colors.green : Colors.grey,
                     size: 20,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(isActive ? 'Aktiv' : 'Inaktiv',
                       style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w600,
@@ -1298,7 +2244,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                               isActive ? Colors.green[700] : Colors.grey[700])),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               if (events.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1306,7 +2252,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                     children: [
                       Icon(Icons.hourglass_empty,
                           size: 26, color: Colors.grey[300]),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       Text('Ingen hændelser endnu.',
                           style: GoogleFonts.kanit(
                               fontSize: 12, color: Colors.grey[500])),
@@ -1326,7 +2272,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                         horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppRadii.smRadius,
                       border: Border(left: BorderSide(color: color, width: 3)),
                     ),
                     child: Row(
@@ -1366,7 +2312,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         _card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1374,13 +2320,13 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
               Text('Afbryd forbindelsen',
                   style: GoogleFonts.kanit(
                       fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Text(
                 'Stopper integrationen og fjerner adgangen til jeres HubSpot-konto. Jeres kortlægning, udløser og skabelon gemmes, så I hurtigt kan forbinde igen.',
                 style:
-                    GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[600]),
+                    AppTextStyles.caption(),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -1398,7 +2344,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                     side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                   ),
                 ),
               ),
@@ -1417,12 +2363,12 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
       ),
       child: Row(
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(text,
                 style: GoogleFonts.kanit(fontSize: 12, color: color)),
@@ -1441,19 +2387,19 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
     return DropdownButtonFormField<String>(
       initialValue: value,
       isExpanded: true,
-      style: GoogleFonts.kanit(fontSize: 13, color: Colors.black87),
+      style: AppTextStyles.body(),
       decoration: InputDecoration(
         filled: true,
         fillColor: Colors.grey[50],
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: AppRadii.smRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
       ),
       hint: Text(hint,
-          style: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[500])),
+          style: AppTextStyles.body(color: Colors.grey[500])),
       items: items
           .map((e) => DropdownMenuItem(
               value: e.key,
@@ -1497,13 +2443,13 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: AppRadii.mdRadius),
                     ),
                     child: Text('Tilbage',
                         style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
                   ),
                 ),
-              if (!isFirst) const SizedBox(width: 12),
+              if (!isFirst) const SizedBox(width: AppSpacing.md),
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
@@ -1516,7 +2462,7 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                   ),
                   child: Text(isLast ? 'Luk' : 'Næste',
                       style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),

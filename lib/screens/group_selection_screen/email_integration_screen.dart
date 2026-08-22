@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -97,7 +98,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
           _buildStepIndicator(themeColor),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: _buildStepContent(themeColor),
             ),
           ),
@@ -116,7 +117,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
         children: [
           const Icon(Icons.design_services_outlined,
               size: 16, color: Color(0xFF9A6700)),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               'Eksempel — viser hvordan en e-mail-integration fungerer. Ikke forbundet til en rigtig e-mailkonto endnu.',
@@ -223,17 +224,11 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
   Widget _card({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       ),
       child: child,
     );
@@ -247,10 +242,10 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
         children: [
           Text(title,
               style:
-                  GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
+                  AppTextStyles.headingBold()),
+          const SizedBox(height: AppSpacing.xs),
           Text(subtitle,
-              style: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600])),
+              style: AppTextStyles.body(color: Colors.grey[600])),
         ],
       ),
     );
@@ -286,7 +281,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                       helperText: 'F.eks. smtp.jeresudbyder.dk',
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: _buildTextField(
                       controller: _smtpPortController,
@@ -312,7 +307,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                 helperText:
                     'Gemmes krypteret og vises aldrig i klar tekst igen.',
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               SizedBox(
                 width: double.infinity,
                 height: 46,
@@ -333,7 +328,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                     backgroundColor: themeColor,
                     foregroundColor: _onThemeColor(themeColor),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                   ),
                 ),
               ),
@@ -384,7 +379,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.mdRadius,
                   border: Border.all(color: Colors.grey[200]!),
                 ),
                 child: Row(
@@ -474,8 +469,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                 children: [
                   Expanded(
                     child: Text('Aktivér integration',
-                        style: GoogleFonts.kanit(
-                            fontSize: 14, fontWeight: FontWeight.w600)),
+                        style: AppTextStyles.label()),
                   ),
                   Switch(
                     value: _activated,
@@ -536,7 +530,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                     color: _activated ? Colors.green : Colors.grey,
                     size: 20,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(_activated ? 'Aktiv' : 'Inaktiv',
                       style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w600,
@@ -545,7 +539,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                               : Colors.grey[700])),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               ...events.map((e) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Row(
@@ -598,7 +592,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
             width: 140,
             child: Text(label,
                 style:
-                    GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600])),
+                    AppTextStyles.body(color: Colors.grey[600])),
           ),
           Expanded(
             child: Text(value,
@@ -616,12 +610,12 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
       ),
       child: Row(
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(text,
                 style: GoogleFonts.kanit(fontSize: 12, color: color)),
@@ -652,15 +646,15 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
         labelStyle: GoogleFonts.kanit(color: Colors.grey[600]),
         prefixIcon: Icon(icon, color: Colors.grey[400], size: 20),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
         ),
         filled: true,
@@ -675,7 +669,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
     final isFirst = _currentStep == 0;
     final isLast = _currentStep == _steps.length - 1;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -695,13 +689,13 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadii.mdRadius),
                 ),
                 child: Text('Tilbage',
                     style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
               ),
             ),
-          if (!isFirst) const SizedBox(width: 12),
+          if (!isFirst) const SizedBox(width: AppSpacing.md),
           Expanded(
             flex: 2,
             child: ElevatedButton(
@@ -713,7 +707,7 @@ class _EmailIntegrationScreenState extends State<EmailIntegrationScreen> {
                 foregroundColor: _onThemeColor(themeColor),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                    borderRadius: AppRadii.mdRadius),
               ),
               child: Text(isLast ? 'Luk' : 'Næste',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),

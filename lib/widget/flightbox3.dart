@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:backend/config/design.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -123,7 +124,7 @@ class _FlightBoxState extends State<FlightBox3> {
         backgroundColor:
             const Color.fromARGB(255, 184, 165, 151), // Background color
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.0), // Rounded corners
+          borderRadius: AppRadii.mdRadius, // Rounded corners
         ),
         content: SizedBox(
           width: double.maxFinite,
@@ -168,7 +169,7 @@ class _FlightBoxState extends State<FlightBox3> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
 
               // Flight Information Row
               _buildFlightRow(
@@ -179,7 +180,7 @@ class _FlightBoxState extends State<FlightBox3> {
                 destinationCity: widget.flight.destinationCity,
                 arrivalTime: _arrivalTime,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
 
               // Flight Number, Gate, Date, Travel Time
               _buildDetailInfo(
@@ -342,12 +343,12 @@ class _FlightBoxState extends State<FlightBox3> {
     return GestureDetector(
       onTap: () => _showFlightDetailsDialog(context),
       child: Padding(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(AppSpacing.sm),
         child: Container(
           width: screenWidth * 0.9,
           decoration: BoxDecoration(
             color: const Color.fromARGB(223, 239, 224, 213),
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: AppRadii.mdRadius,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.1),
@@ -373,7 +374,7 @@ class _FlightBoxState extends State<FlightBox3> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     const Expanded(
                       child: DottedDashedLine(
                         width: double.infinity,
@@ -381,7 +382,7 @@ class _FlightBoxState extends State<FlightBox3> {
                         axis: Axis.horizontal,
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     Column(
                       children: [
                          Icon(MdiIcons.airplane,
@@ -394,7 +395,7 @@ class _FlightBoxState extends State<FlightBox3> {
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(AppSpacing.sm),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
@@ -418,7 +419,7 @@ class _FlightBoxState extends State<FlightBox3> {
                         ),
                       ],
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     const Expanded(
                       child: DottedDashedLine(
                         width: double.infinity,
@@ -426,7 +427,7 @@ class _FlightBoxState extends State<FlightBox3> {
                         axis: Axis.horizontal,
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       widget.flight.destinationAirportCode,
                       style: TextStyle(
@@ -437,7 +438,7 @@ class _FlightBoxState extends State<FlightBox3> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16.0),
+                const SizedBox(height: AppSpacing.lg),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

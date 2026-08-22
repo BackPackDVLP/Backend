@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -127,7 +128,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
           _buildStepIndicator(themeColor),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: _buildStepContent(themeColor),
             ),
           ),
@@ -146,7 +147,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
         children: [
           const Icon(Icons.design_services_outlined,
               size: 16, color: Color(0xFF9A6700)),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               'Eksempel — viser hvordan AI kunne bygge en rejse ud fra jeres dokumenter. Analysen herunder er ikke rigtig endnu.',
@@ -244,17 +245,11 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
   Widget _card({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       ),
       child: child,
     );
@@ -268,10 +263,10 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
         children: [
           Text(title,
               style:
-                  GoogleFonts.kanit(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
+                  AppTextStyles.headingBold()),
+          const SizedBox(height: AppSpacing.xs),
           Text(subtitle,
-              style: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600])),
+              style: AppTextStyles.body(color: Colors.grey[600])),
         ],
       ),
     );
@@ -320,7 +315,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                 ),
               ),
               if (_files.isNotEmpty) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 ..._files.asMap().entries.map((entry) {
                   final i = entry.key;
                   final file = entry.value;
@@ -333,7 +328,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                         Expanded(
                           child: Text(file.name,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.kanit(fontSize: 13)),
+                              style: AppTextStyles.body()),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
@@ -374,7 +369,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: CircularProgressIndicator(color: themeColor),
                 ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               ...tasks.map((t) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -389,7 +384,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                               : Colors.grey[400],
                         ),
                         const SizedBox(width: 10),
-                        Text(t, style: GoogleFonts.kanit(fontSize: 13)),
+                        Text(t, style: AppTextStyles.body()),
                       ],
                     ),
                   )),
@@ -423,7 +418,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         Text('Tidslinje-udkast',
             style:
                 GoogleFonts.kanit(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -450,7 +445,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                                         fontStyle: FontStyle.italic,
                                         color: Colors.orange[800]))
                                 : Text(t.description,
-                                    style: GoogleFonts.kanit(fontSize: 13)),
+                                    style: AppTextStyles.body()),
                           ),
                         ],
                       ),
@@ -466,7 +461,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
     final isUnknown = field.controller.text.isEmpty;
     return TextFormField(
       controller: field.controller,
-      style: GoogleFonts.kanit(fontSize: 13),
+      style: AppTextStyles.body(),
       decoration: InputDecoration(
         labelText: field.label,
         hintText: isUnknown ? 'Ikke fundet — udfyld manuelt' : null,
@@ -485,21 +480,21 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
         fillColor:
             isUnknown ? Colors.orange.withValues(alpha: 0.05) : Colors.grey[50],
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(
               color: isUnknown
                   ? Colors.orange.withValues(alpha: 0.4)
                   : Colors.grey[300]!),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(
               color: isUnknown
                   ? Colors.orange.withValues(alpha: 0.4)
                   : Colors.grey[300]!),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
         ),
         contentPadding:
@@ -529,8 +524,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                       SizedBox(
                         width: 150,
                         child: Text(field.label,
-                            style: GoogleFonts.kanit(
-                                fontSize: 13, color: Colors.grey[600])),
+                            style: AppTextStyles.body(color: Colors.grey[600])),
                       ),
                       Expanded(
                         child: Text(
@@ -585,7 +579,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -605,13 +599,13 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadii.mdRadius),
                 ),
                 child: Text('Tilbage',
                     style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
               ),
             ),
-          if (!isFirst && !onAnalyzeStep) const SizedBox(width: 12),
+          if (!isFirst && !onAnalyzeStep) const SizedBox(width: AppSpacing.md),
           Expanded(
             flex: 2,
             child: ElevatedButton(
@@ -622,7 +616,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
                 disabledBackgroundColor: Colors.grey[300],
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                    borderRadius: AppRadii.mdRadius),
               ),
               child: Text(primaryLabel,
                   style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),

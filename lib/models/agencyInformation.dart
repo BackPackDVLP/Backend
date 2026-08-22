@@ -21,6 +21,11 @@ class AgencyInformation extends Equatable {
   final bool emailIntegrationEnabled;
   final bool aiTripBuilderEnabled;
 
+  // Bureau-wide default for new groups' own `mapEnabled` field (see
+  // group_information_model.dart) — a specific trip's Detaljer screen can
+  // still override this per group; this only seeds the value at creation.
+  final bool mapEnabledDefault;
+
   const AgencyInformation({
     required this.agencyCode,
     required this.agencyName,
@@ -34,6 +39,7 @@ class AgencyInformation extends Equatable {
     this.crmEnabled = false,
     this.emailIntegrationEnabled = false,
     this.aiTripBuilderEnabled = false,
+    this.mapEnabledDefault = false,
   });
 
   factory AgencyInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -53,6 +59,7 @@ class AgencyInformation extends Equatable {
       emailIntegrationEnabled:
           data['emailIntegrationEnabled'] as bool? ?? false,
       aiTripBuilderEnabled: data['aiTripBuilderEnabled'] as bool? ?? false,
+      mapEnabledDefault: data['mapEnabledDefault'] as bool? ?? false,
     );
   }
 
@@ -70,5 +77,6 @@ class AgencyInformation extends Equatable {
         crmEnabled,
         emailIntegrationEnabled,
         aiTripBuilderEnabled,
+        mapEnabledDefault,
       ];
 }

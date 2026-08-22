@@ -1,10 +1,12 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/widget/edit_person_dialog.dart';
 import 'package:backend/widget/phone_number_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 
 /// Agency-scoped view of the app users who are members of at least one of
 /// this bureau's trips. Users can be edited (name/phone/email) or deleted.
@@ -92,6 +94,8 @@ class _UsersScreenState extends State<UsersScreen> {
     String prefillName = data['name'] as String? ?? '';
     String prefillPhone =
         (data['phoneNumber'] != null) ? data['phoneNumber'].toString() : '';
+    String prefillWhatsapp =
+        (data['whatsappNumber'] as String?)?.trim() ?? '';
 
     final groupIds = _groupIdsForUser(data);
     if (groupIds.isNotEmpty) {
@@ -102,6 +106,8 @@ class _UsersScreenState extends State<UsersScreen> {
         prefillPhone = member['phoneNumber'] != null
             ? member['phoneNumber'].toString()
             : prefillPhone;
+        prefillWhatsapp =
+            (member['whatsappNumber'] as String?)?.trim() ?? prefillWhatsapp;
       }
     }
 
@@ -109,6 +115,8 @@ class _UsersScreenState extends State<UsersScreen> {
 
     final nameController = TextEditingController(text: prefillName);
     String phoneValue = prefillPhone;
+    String whatsappValue = prefillWhatsapp;
+    bool hasWhatsapp = prefillWhatsapp.isNotEmpty;
     final emailController = TextEditingController(text: email);
     final formKey = GlobalKey<FormState>();
     final pendingGroupIds = <String>{};
@@ -118,6 +126,11 @@ class _UsersScreenState extends State<UsersScreen> {
       builder: (dialogCtx) {
         bool isSaving = false;
         String? errorMessage;
+        // A bureau can have hundreds of trips — always listing every single
+        // one just to toggle membership for one traveler doesn't scale.
+        // Trips they're already on are always shown (normally a handful);
+        // anything else only appears once you search for it by name.
+        String tripSearchQuery = '';
 
         return StatefulBuilder(
           builder: (dialogCtx, setState) {
@@ -168,6 +181,7 @@ class _UsersScreenState extends State<UsersScreen> {
                           phoneValue.replaceAll(RegExp(r'[^0-9]'), '')) ??
                       0,
                   'email': emailController.text.trim(),
+                  'whatsappNumber': hasWhatsapp ? whatsappValue.trim() : '',
                 });
                 if (dialogCtx.mounted) Navigator.pop(dialogCtx, true);
               } on FirebaseFunctionsException catch (e) {
@@ -185,7 +199,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
             return Dialog(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
+                  borderRadius: AppRadii.lgRadius),
               child: ConstrainedBox(
                 constraints:
                     const BoxConstraints(maxWidth: 480, maxHeight: 680),
@@ -207,9 +221,7 @@ class _UsersScreenState extends State<UsersScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Rediger bruger',
-                                    style: GoogleFonts.kanit(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold)),
+                                    style: AppTextStyles.headingBold()),
                                 Text(email,
                                     style: GoogleFonts.kanit(
                                         fontSize: 12, color: Colors.grey[600]),
@@ -248,7 +260,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                           ? Colors.green
                                           : Colors.grey)
                                       .withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: AppRadii.mdRadius,
                                   border: Border.all(
                                     color: (hasAppInstalled
                                             ? Colors.green
@@ -267,7 +279,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                           ? Colors.green[700]
                                           : Colors.grey[600],
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: AppSpacing.sm),
                                     Expanded(
                                       child: Text(
                                         hasAppInstalled
@@ -285,20 +297,85 @@ class _UsersScreenState extends State<UsersScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.lg),
                               EditField(
                                 controller: nameController,
                                 label: 'Navn',
                                 icon: Icons.badge_outlined,
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: AppSpacing.md),
                               PhoneNumberField(
                                 initialValue: phoneValue,
                                 label: 'Telefonnummer',
                                 icon: Icons.phone_outlined,
-                                onChanged: (v) => phoneValue = v,
+                                onChanged: (v) {
+                                  phoneValue = v;
+                                  // WhatsApp defaults to mirroring the
+                                  // phone number until the user diverges
+                                  // it themselves — once they've edited the
+                                  // WhatsApp field on its own, further phone
+                                  // edits should stop overwriting it.
+                                  if (hasWhatsapp &&
+                                      whatsappValue == phoneValue) {
+                                    setState(() => whatsappValue = v);
+                                  }
+                                },
                               ),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: AppSpacing.sm),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.withOpacity(0.06),
+                                  borderRadius: AppRadii.mdRadius,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(MdiIcons.whatsapp,
+                                            size: 19,
+                                            color: hasWhatsapp
+                                                ? const Color(0xFF25D366)
+                                                : Colors.grey[500]),
+                                        const SizedBox(width: AppSpacing.sm),
+                                        Expanded(
+                                          child: Text('Har brugeren WhatsApp?',
+                                              style: GoogleFonts.kanit(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.grey[700])),
+                                        ),
+                                        YesNoToggle(
+                                          value: hasWhatsapp,
+                                          activeColor: widget.mainColor,
+                                          onChanged: (v) => setState(() {
+                                            hasWhatsapp = v;
+                                            if (v && whatsappValue.isEmpty) {
+                                              whatsappValue = phoneValue;
+                                            }
+                                          }),
+                                        ),
+                                      ],
+                                    ),
+                                    if (hasWhatsapp) ...[
+                                      const SizedBox(height: AppSpacing.sm),
+                                      PhoneNumberField(
+                                        key: ValueKey(
+                                            'whatsapp-$hasWhatsapp'),
+                                        initialValue: whatsappValue,
+                                        label: 'WhatsApp-nummer',
+                                        icon: MdiIcons.whatsapp,
+                                        iconColor: const Color(0xFF25D366),
+                                        onChanged: (v) => whatsappValue = v,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
                               EditField(
                                 controller: emailController,
                                 label: 'Email',
@@ -312,10 +389,10 @@ class _UsersScreenState extends State<UsersScreen> {
                               if (errorMessage != null) ...[
                                 const SizedBox(height: 14),
                                 Container(
-                                  padding: const EdgeInsets.all(12),
+                                  padding: const EdgeInsets.all(AppSpacing.md),
                                   decoration: BoxDecoration(
                                     color: Colors.red.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: AppRadii.mdRadius,
                                     border: Border.all(
                                         color: Colors.red.withOpacity(0.2)),
                                   ),
@@ -325,20 +402,18 @@ class _UsersScreenState extends State<UsersScreen> {
                                     children: [
                                       const Icon(Icons.error_outline,
                                           color: Colors.red, size: 18),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: AppSpacing.sm),
                                       Expanded(
                                         child: Text(
                                           errorMessage!,
-                                          style: GoogleFonts.kanit(
-                                              color: Colors.red[700],
-                                              fontSize: 13),
+                                          style: AppTextStyles.body(color: Colors.red[700]),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                              const SizedBox(height: 20),
+                              const SizedBox(height: AppSpacing.xl),
                               Text(
                                 'Rejser hos ${widget.agencyCode}',
                                 style: GoogleFonts.kanit(
@@ -346,7 +421,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                     fontWeight: FontWeight.bold,
                                     color: Colors.grey[700]),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.sm),
                               StreamBuilder<QuerySnapshot>(
                                 stream: FirebaseFirestore.instance
                                     .collection('groups')
@@ -355,20 +430,22 @@ class _UsersScreenState extends State<UsersScreen> {
                                     .snapshots(),
                                 builder: (context, groupsSnapshot) {
                                   if (!groupsSnapshot.hasData) {
-                                    return const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 16),
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 16),
                                       child: Center(
                                         child: SizedBox(
                                           width: 20,
                                           height: 20,
                                           child: CircularProgressIndicator(
-                                              strokeWidth: 2),
+                                              strokeWidth: 2,
+                                              color: widget.mainColor),
                                         ),
                                       ),
                                     );
                                   }
-                                  final groupDocs = groupsSnapshot.data!.docs
+                                  final allGroupDocs = groupsSnapshot
+                                      .data!.docs
                                       .where((g) =>
                                           (g.data() as Map<String, dynamic>)[
                                               'isTemplate'] !=
@@ -383,71 +460,129 @@ class _UsersScreenState extends State<UsersScreen> {
                                           b.id;
                                       return an.compareTo(bn);
                                     });
-                                  if (groupDocs.isEmpty) {
+
+                                  bool isMemberOf(QueryDocumentSnapshot g) {
+                                    final members =
+                                        ((g.data() as Map)['members']
+                                                as List?) ??
+                                            const [];
+                                    return members.cast<Map?>().any((m) =>
+                                        m != null &&
+                                        (m['email'] as String?)
+                                                ?.toLowerCase() ==
+                                            emailLower);
+                                  }
+
+                                  final memberGroups =
+                                      allGroupDocs.where(isMemberOf).toList();
+                                  final query =
+                                      tripSearchQuery.trim().toLowerCase();
+                                  // Only searched for, never dumped in full —
+                                  // a bureau can have hundreds of trips, and
+                                  // an empty query showing all of them is
+                                  // exactly the problem this replaces.
+                                  final searchResults = query.isEmpty
+                                      ? const <QueryDocumentSnapshot>[]
+                                      : allGroupDocs
+                                          .where((g) => !isMemberOf(g))
+                                          .where((g) {
+                                          final name = (((g.data() as Map)[
+                                                      'groupName']
+                                                  as String?) ??
+                                              g.id);
+                                          return name
+                                              .toLowerCase()
+                                              .contains(query);
+                                        }).take(20).toList();
+
+                                  Widget tripRow(
+                                      QueryDocumentSnapshot groupDoc,
+                                      bool isMember) {
+                                    final groupName = ((groupDoc.data()
+                                                as Map)['groupName']
+                                            as String?) ??
+                                        groupDoc.id;
+                                    final isPending = pendingGroupIds
+                                        .contains(groupDoc.id);
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 8),
-                                      child: Text(
-                                        'Ingen rejser fundet for dette bureau',
-                                        style: GoogleFonts.kanit(
-                                            color: Colors.grey, fontSize: 13),
+                                          vertical: 2),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(groupName,
+                                                style: GoogleFonts.kanit(
+                                                    fontSize: 14)),
+                                          ),
+                                          if (isPending)
+                                            SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: widget.mainColor),
+                                            )
+                                          else
+                                            Switch(
+                                              value: isMember,
+                                              activeThumbColor:
+                                                  widget.mainColor,
+                                              onChanged: (value) =>
+                                                  toggleGroup(
+                                                      groupDoc.id, value),
+                                            ),
+                                        ],
                                       ),
                                     );
                                   }
-                                  return Column(
-                                    children: groupDocs.map((groupDoc) {
-                                      final groupData = groupDoc.data()
-                                          as Map<String, dynamic>;
-                                      final groupName =
-                                          (groupData['groupName'] as String?) ??
-                                              groupDoc.id;
-                                      final members =
-                                          (groupData['members'] as List?) ??
-                                              const [];
-                                      final isMember = members.cast<Map?>().any(
-                                          (m) =>
-                                              m != null &&
-                                              (m['email'] as String?)
-                                                      ?.toLowerCase() ==
-                                                  emailLower);
-                                      final isPending =
-                                          pendingGroupIds.contains(groupDoc.id);
 
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 2),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(groupName,
-                                                  style: GoogleFonts.kanit(
-                                                      fontSize: 14)),
-                                            ),
-                                            if (isPending)
-                                              const SizedBox(
-                                                width: 20,
-                                                height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2),
-                                              )
-                                            else
-                                              Switch(
-                                                value: isMember,
-                                                activeThumbColor:
-                                                    widget.mainColor,
-                                                onChanged: (value) =>
-                                                    toggleGroup(
-                                                        groupDoc.id, value),
-                                              ),
-                                          ],
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (memberGroups.isEmpty)
+                                        Text(
+                                          'Brugeren er ikke tilknyttet nogen rejser endnu.',
+                                          style: AppTextStyles.body(
+                                              color: Colors.grey),
+                                        )
+                                      else
+                                        ...memberGroups
+                                            .map((g) => tripRow(g, true)),
+                                      const SizedBox(height: AppSpacing.md),
+                                      TextField(
+                                        onChanged: (v) => setState(
+                                            () => tripSearchQuery = v),
+                                        style: GoogleFonts.kanit(fontSize: 13),
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          hintText:
+                                              'Søg for at tilføje en anden rejse...',
+                                          hintStyle: AppTextStyles.body(
+                                              color: Colors.grey[500]),
+                                          prefixIcon: const Icon(
+                                              Icons.search,
+                                              size: 18),
+                                          border: OutlineInputBorder(
+                                              borderRadius:
+                                                  AppRadii.smRadius),
                                         ),
-                                      );
-                                    }).toList(),
+                                      ),
+                                      if (query.isNotEmpty) ...[
+                                        const SizedBox(height: AppSpacing.sm),
+                                        if (searchResults.isEmpty)
+                                          Text('Ingen rejser matcher.',
+                                              style: AppTextStyles.body(
+                                                  color: Colors.grey))
+                                        else
+                                          ...searchResults
+                                              .map((g) => tripRow(g, false)),
+                                      ],
+                                    ],
                                   );
                                 },
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.sm),
                             ],
                           ),
                         ),
@@ -455,7 +590,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     ),
                     const Divider(height: 1),
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -467,14 +602,14 @@ class _UsersScreenState extends State<UsersScreen> {
                                 style:
                                     GoogleFonts.kanit(color: Colors.grey[600])),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           ElevatedButton(
                             onPressed: isSaving ? null : save,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: widget.mainColor,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: AppRadii.smRadius),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 24, vertical: 12),
                             ),
@@ -598,13 +733,7 @@ class _UsersScreenState extends State<UsersScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: AppShadows.card,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -626,7 +755,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     Text(email,
                         style: GoogleFonts.kanit(
                             fontSize: 12, color: Colors.grey[600])),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -701,7 +830,7 @@ class _UsersScreenState extends State<UsersScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppSpacing.xs),
           Text(
             label,
             style: GoogleFonts.kanit(
@@ -723,8 +852,9 @@ class _UsersScreenState extends State<UsersScreen> {
       mainColor: widget.mainColor,
       initialName: '',
       initialPhone: '',
+      initialWhatsapp: '',
       initialEmail: '',
-      onSave: (name, phone, email) async {
+      onSave: (name, phone, email, whatsapp) async {
         try {
           await FirebaseFunctions.instanceFor(region: 'europe-west1')
               .httpsCallable('createAppUser')
@@ -735,6 +865,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 int.tryParse((phone ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ??
                     0,
             'email': email,
+            'whatsappNumber': (whatsapp ?? '').trim(),
           });
           return null;
         } on FirebaseFunctionsException catch (e) {
@@ -809,7 +940,7 @@ class _UsersScreenState extends State<UsersScreen> {
           return _buildEmptyState('Ingen brugere fundet endnu');
         }
         return ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           children:
               userDocs.map((doc) => _buildUserCard(context, doc)).toList(),
         );

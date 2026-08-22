@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:backend/config/design.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -13,12 +14,12 @@ class FlightBox4 extends StatelessWidget {
 
     return GestureDetector(
       child: Padding(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(AppSpacing.sm),
         child: Container(
           width: screenWidth * 0.9,
           decoration: BoxDecoration(
             color: const Color.fromARGB(223, 239, 224, 213),
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: AppRadii.mdRadius,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.1),
@@ -44,7 +45,7 @@ class FlightBox4 extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       // Changed to Expanded
                       child: Divider(
@@ -52,7 +53,7 @@ class FlightBox4 extends StatelessWidget {
                         color: Colors.black45,
                       ),
                     ),
-                    SizedBox(width: 8.0),
+                    SizedBox(width: AppSpacing.sm),
                     Column(
                       children: [
                         SizedBox(
@@ -70,7 +71,7 @@ class FlightBox4 extends StatelessWidget {
                                 fontFamily: GoogleFonts.kanit().fontFamily))
                       ],
                     ),
-                    SizedBox(width: 8.0),
+                    SizedBox(width: AppSpacing.sm),
                     Expanded(
                       // Changed to Expanded
                       child: Divider(
@@ -78,7 +79,7 @@ class FlightBox4 extends StatelessWidget {
                         color: Colors.black45,
                       ),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       flight.destinationAirportCode,
                       style: TextStyle(
@@ -89,7 +90,7 @@ class FlightBox4 extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16.0),
+                const SizedBox(height: AppSpacing.lg),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

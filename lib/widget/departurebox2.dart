@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -43,14 +44,8 @@ class DepartureBox2 extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: AppRadii.lgRadius,
+          boxShadow: AppShadows.card,
         ),
         child: Row(
           children: [
@@ -63,7 +58,7 @@ class DepartureBox2 extends StatelessWidget {
               ),
               child: Icon(Icons.flight_takeoff, color: AppColors.primary, size: 26),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: AppSpacing.lg),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,7 +71,7 @@ class DepartureBox2 extends StatelessWidget {
                       color: Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppSpacing.xs),
                   Text(
                     subtitle,
                     style: GoogleFonts.kanit(fontSize: 13, color: Colors.black54),

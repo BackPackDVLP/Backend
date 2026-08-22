@@ -1,4 +1,6 @@
 import 'package:backend/models/agencyInformation.dart';
+import 'package:backend/config/design.dart';
+import 'package:backend/config/permissions.dart';
 import 'package:backend/screens/group_selection_screen/ai_trip_builder_screen.dart';
 import 'package:backend/screens/group_selection_screen/crm_integration_screen.dart';
 import 'package:backend/screens/group_selection_screen/dashboard_screen.dart';
@@ -9,13 +11,15 @@ import 'package:backend/models/group_information_model.dart';
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/packinglist_model.dart';
 import 'package:backend/models/timeline_event_model.dart';
-import 'package:backend/widget/backgroundVideo.dart';
 import 'package:backend/widget/bureauLogoHeader.dart';
+import 'package:backend/widget/logout.dart';
+import 'package:backend/widget/saved_snackbar.dart';
 import 'package:backend/blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
 import 'package:backend/screens/home/homescreen.dart';
 import 'package:backend/screens/details/detailsscreen.dart';
+import 'package:backend/screens/group_selection_screen/app_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -26,15 +30,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'dart:io';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 
 enum SideMenuItem {
   dashboard,
@@ -46,6 +48,7 @@ enum SideMenuItem {
   packingList,
   users,
   team,
+  app,
   settings,
 }
 
@@ -79,6 +82,11 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   _GroupFilters _filters = _GroupFilters();
+  // "Rejser" only shows current/upcoming trips by default — past trips
+  // (returnDate before today) are hidden until explicitly asked for via
+  // the toggle next to the search bar. Doesn't apply to Skabeloner, whose
+  // dates are template defaults, not real trip dates.
+  bool _showPastTrips = false;
 
   @override
   void initState() {
@@ -109,30 +117,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         .add(LoadGroupInformationById(groupId: group.groupId));
   }
 
-  Future<void> _handleLogout() async {
-    // Reset the GroupInformationBloc to its initial state
-    context.read<GroupInformationBloc>().add(LogoutEvent());
-
-    // Clear saved preferences
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('groupId');
-    await prefs.remove('lastEnteredAgencyCode');
-
-    // Sign out from Firebase
-    await FirebaseAuth.instance.signOut();
-
-    // Add a small delay to ensure the BLoC state is reset before the new screen builds.
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    // Navigate to login screen and remove all previous routes
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const GroupIDScreen()),
-        (route) => false,
-      );
-    }
-  }
+  Future<void> _handleLogout() => performLogout(context);
 
   void _showFilterDialog(Color primaryColor) async {
     final newFilters = await showDialog<_GroupFilters>(
@@ -181,12 +166,12 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Er du sikker på, at du vil slette "${group.groupId}"?'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.sm),
                   const Text(
                     'Dette kan ikke fortrydes. Indtast din adgangskode for at bekræfte.',
                     style: TextStyle(fontSize: 13, color: Colors.grey),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   Form(
                     key: formKey,
                     child: TextFormField(
@@ -326,6 +311,15 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       }
       return g.isTemplate != true;
     }).where((g) {
+      // Only current/upcoming trips by default — a trip counts as "past"
+      // once its returnDate is before today. Templates have no real trip
+      // dates, so this only applies to the actual Rejser list.
+      if (_showPastTrips || _selectedMenuItem == SideMenuItem.templates) {
+        return true;
+      }
+      final today = DateUtils.dateOnly(DateTime.now());
+      return !DateUtils.dateOnly(g.returnDate).isBefore(today);
+    }).where((g) {
       // Search filter
       if (_searchQuery.isEmpty) {
         return true;
@@ -376,7 +370,9 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
           );
         }
       },
-      child: StreamBuilder<DocumentSnapshot>(
+      child: AgencyPermissionsResolver(
+        agencyCode: agencyCode,
+        builder: (context, permissions) => StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('agency')
             .doc(agencyCode)
@@ -395,8 +391,9 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
               // Desktop: Grid layout, Mobile: List layout
               final isDesktop = constraints.maxWidth > 800;
               return Scaffold(
-                drawer:
-                    isDesktop ? null : _buildSideMenu(appBarColor, agencyInfo),
+                drawer: isDesktop
+                    ? null
+                    : _buildSideMenu(appBarColor, agencyInfo, permissions),
                 appBar: AppBar(
                   automaticallyImplyLeading: !isDesktop,
                   centerTitle: true,
@@ -422,8 +419,10 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   // actions removed for side menu
                 ),
                 floatingActionButton: isDesktop &&
-                        (_selectedMenuItem == SideMenuItem.groups ||
-                            _selectedMenuItem == SideMenuItem.templates)
+                        ((_selectedMenuItem == SideMenuItem.groups &&
+                                permissions.contains('trips.create')) ||
+                            (_selectedMenuItem == SideMenuItem.templates &&
+                                permissions.contains('templates.edit')))
                     ? FloatingActionButton(
                         backgroundColor: AppColors.navActive,
                         onPressed: () => _showAddGroupOptions(
@@ -449,7 +448,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   child: Row(
                     children: [
                       if (isDesktop)
-                        _buildSideMenu(appBarColor, agencyInfo,
+                        _buildSideMenu(appBarColor, agencyInfo, permissions,
                             isDrawer: false),
                       Expanded(
                         child: _buildMainContent(
@@ -459,6 +458,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                           data: data,
                           displayedGroups: displayedGroups,
                           isDesktop: isDesktop,
+                          permissions: permissions,
                         ),
                       ),
                     ],
@@ -468,6 +468,35 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             },
           );
         },
+        ),
+      ),
+    );
+  }
+
+  /// Shown when `_selectedMenuItem` points at a screen the caller's role
+  /// doesn't have the matching permission for — reached via a dashboard
+  /// shortcut or a stale selection rather than the (already-hidden)
+  /// sidebar item, so this is the single choke point every path funnels
+  /// through, not just the sidebar's own visibility gate.
+  Widget _buildAccessDenied(Color themeColor) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline, size: 40, color: Colors.grey[400]),
+            const SizedBox(height: AppSpacing.md),
+            Text('Ingen adgang',
+                style: AppTextStyles.headingBold()),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Din rolle giver ikke adgang til denne side.',
+              style: AppTextStyles.body(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -515,13 +544,13 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                     Text('Byg med AI',
                         style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
                     if (!agencyInfo.aiTripBuilderEnabled) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFF4E5),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: AppRadii.lgRadius,
                         ),
                         child: Text('Ikke i din plan',
                             style: GoogleFonts.kanit(
@@ -576,6 +605,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     required Map<String, dynamic> data,
     required List<GroupInformation> displayedGroups,
     required bool isDesktop,
+    required Set<String> permissions,
   }) {
     if (_selectedMenuItem == SideMenuItem.dashboard) {
       return DashboardScreen(
@@ -589,24 +619,35 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         onNavigateToTeam: () =>
             setState(() => _selectedMenuItem = SideMenuItem.team),
         onSelectGroup: (group) => _selectGroup(context, group),
-        onCreateGroup: () =>
-            _openAddGroupDialog(context, agencyInfo, agencyCode),
-        onOpenCrm: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => CrmIntegrationScreen(agencyInfo: agencyInfo),
-          ),
-        ),
+        onCreateGroup: permissions.contains('trips.create')
+            ? () => _openAddGroupDialog(context, agencyInfo, agencyCode)
+            : null,
+        onOpenCrm: permissions.contains('crm_integration.edit')
+            ? () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        CrmIntegrationScreen(agencyInfo: agencyInfo),
+                  ),
+                )
+            : null,
       );
     } else if (_selectedMenuItem == SideMenuItem.groupOverview &&
         _selectedGroup != null) {
-      return HomeScreen(scrollController: _scrollController);
+      return HomeScreen(
+        scrollController: _scrollController,
+        canEditTrips: permissions.contains('trips.edit'),
+      );
     } else if (_selectedMenuItem == SideMenuItem.groupDetails &&
         _selectedGroup != null) {
       return GroupDetailsScreen(
         groupId: _selectedGroup!.groupId,
         repository: context.read<GroupInformationRepository>(),
+        canEditTrips: permissions.contains('trips.edit'),
       );
     } else if (_selectedMenuItem == SideMenuItem.photoLibrary) {
+      if (!permissions.contains('photo_library.edit')) {
+        return _buildAccessDenied(appBarColor);
+      }
       return AgencyImagesScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
@@ -614,27 +655,47 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         isNested: true,
       );
     } else if (_selectedMenuItem == SideMenuItem.packingList) {
+      if (!permissions.contains('packing_lists.edit')) {
+        return _buildAccessDenied(appBarColor);
+      }
       return PackingListLibraryScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
         isNested: true,
       );
     } else if (_selectedMenuItem == SideMenuItem.users) {
+      if (!permissions.contains('users.edit')) {
+        return _buildAccessDenied(appBarColor);
+      }
       return UsersScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
         isNested: true,
       );
     } else if (_selectedMenuItem == SideMenuItem.team) {
+      if (!permissions.contains('employees.manage')) {
+        return _buildAccessDenied(appBarColor);
+      }
       return TeamScreen(
         agencyCode: agencyCode,
         mainColor: appBarColor,
         isNested: true,
       );
-    } else if (_selectedMenuItem == SideMenuItem.settings) {
-      return BureauSettingsScreen(
+    } else if (_selectedMenuItem == SideMenuItem.app) {
+      if (!permissions.contains('app_settings.edit')) {
+        return _buildAccessDenied(appBarColor);
+      }
+      return AppScreen(
         agencyInfo: agencyInfo,
         logoUrl: data['logoUrl'] as String?,
+        isNested: true,
+      );
+    } else if (_selectedMenuItem == SideMenuItem.settings) {
+      if (!permissions.contains('agency_settings.edit')) {
+        return _buildAccessDenied(appBarColor);
+      }
+      return BureauSettingsScreen(
+        agencyInfo: agencyInfo,
         standardMessage: data['standardMessage'] as String?,
         standardMessageTitle: data['standardMessageTitle'] as String?,
         isNested: true,
@@ -658,7 +719,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -666,7 +727,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 ),
               ),
               if (isDesktop) ...[
-                const SizedBox(width: 16),
+                const SizedBox(width: AppSpacing.lg),
                 ToggleButtons(
                   isSelected: [!_isGridView, _isGridView],
                   onPressed: (index) {
@@ -685,7 +746,15 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   ],
                 ),
               ],
-              const SizedBox(width: 8),
+              if (_selectedMenuItem != SideMenuItem.templates) ...[
+                const SizedBox(width: AppSpacing.sm),
+                _PastTripsToggle(
+                  themeColor: appBarColor,
+                  active: _showPastTrips,
+                  onTap: () => setState(() => _showPastTrips = !_showPastTrips),
+                ),
+              ],
+              const SizedBox(width: AppSpacing.sm),
               IconButton(
                   icon: Badge(
                     isLabelVisible: _filters.isApplied,
@@ -706,7 +775,11 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                     child: Text(
                       _filters.isApplied || _searchQuery.isNotEmpty
                           ? 'Ingen rejser matcher din søgning/filtrering.'
-                          : 'Ingen rejser fundet.',
+                          : (!_showPastTrips &&
+                                  _selectedMenuItem != SideMenuItem.templates &&
+                                  _groups.any((g) => g.isTemplate != true))
+                              ? 'Ingen kommende rejser — tryk "Vis tidligere rejser" for at se overståede.'
+                              : 'Ingen rejser fundet.',
                       style: GoogleFonts.kanit(
                           fontSize: 18, color: Colors.white70),
                     ),
@@ -741,6 +814,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   }
 
   Widget _buildSideMenu(Color primaryColor, AgencyInformation agencyInfo,
+      Set<String> permissions,
       {bool isDrawer = false}) {
     final menuContent = Container(
       width: 266,
@@ -758,22 +832,31 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 ),
               ),
             ),
-          if (!isDrawer) const SizedBox(height: 20),
+          if (!isDrawer) const SizedBox(height: AppSpacing.xl),
           _buildMenuOption('Dashboard', Icons.space_dashboard,
               SideMenuItem.dashboard, primaryColor, agencyInfo, isDrawer),
           _buildRejserMenuSection(primaryColor, agencyInfo, isDrawer),
-          _buildMenuOption('Skabeloner', Icons.copy_all, SideMenuItem.templates,
-              primaryColor, agencyInfo, isDrawer),
-          _buildMenuOption('Fotobibliotek', Icons.photo_library,
-              SideMenuItem.photoLibrary, primaryColor, agencyInfo, isDrawer),
-          _buildMenuOption('Pakkelister', Icons.checklist,
-              SideMenuItem.packingList, primaryColor, agencyInfo, isDrawer),
-          _buildMenuOption('Brugere', Icons.people, SideMenuItem.users,
-              primaryColor, agencyInfo, isDrawer),
-          _buildMenuOption('Team', Icons.badge, SideMenuItem.team, primaryColor,
-              agencyInfo, isDrawer),
-          _buildMenuOption('Indstillinger', Icons.settings,
-              SideMenuItem.settings, primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('templates.edit'))
+            _buildMenuOption('Skabeloner', Icons.copy_all,
+                SideMenuItem.templates, primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('photo_library.edit'))
+            _buildMenuOption('Fotobibliotek', Icons.photo_library,
+                SideMenuItem.photoLibrary, primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('packing_lists.edit'))
+            _buildMenuOption('Pakkelister', Icons.checklist,
+                SideMenuItem.packingList, primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('users.edit'))
+            _buildMenuOption('Brugere', Icons.people, SideMenuItem.users,
+                primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('employees.manage'))
+            _buildMenuOption('Team', Icons.badge, SideMenuItem.team,
+                primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('app_settings.edit'))
+            _buildMenuOption('App', Icons.smartphone, SideMenuItem.app,
+                primaryColor, agencyInfo, isDrawer),
+          if (permissions.contains('agency_settings.edit'))
+            _buildMenuOption('Indstillinger', Icons.settings,
+                SideMenuItem.settings, primaryColor, agencyInfo, isDrawer),
           const Spacer(),
           _buildSwitchAgencyOption(),
           Padding(
@@ -929,7 +1012,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
               SideMenuItem.groupOverview, agencyColor, isDrawer),
           _buildSubMenuOption('Detaljer', Icons.info_outline,
               SideMenuItem.groupDetails, agencyColor, isDrawer),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
         ],
       ],
     );
@@ -1033,7 +1116,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         ),
         color: Colors.white,
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min, // allow card to grow with content
@@ -1065,7 +1148,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               Wrap(
                 spacing: 10,
                 runSpacing: 6,
@@ -1084,7 +1167,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   _infoChip(Icons.place, 'Slut: ${group.returnTo}'),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1133,7 +1216,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             color: Colors.black87,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         Row(
           children: [
             const Icon(Icons.flight_takeoff, color: Colors.black54, size: 18),
@@ -1171,6 +1254,72 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       avatar: Icon(icon, size: 16, color: Colors.black87),
       label: Text(label, style: GoogleFonts.kanit(fontSize: 14)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    );
+  }
+}
+
+/// Toggle for revealing past trips in the Rejser list. A custom pill
+/// instead of a plain FilterChip — FilterChip's selected state pulls from
+/// Material's default ColorScheme (a purplish tone unrelated to the
+/// bureau's own brand), so this uses the agency's actual theme color
+/// explicitly instead, matching every other accent in the control panel.
+class _PastTripsToggle extends StatelessWidget {
+  const _PastTripsToggle({
+    required this.themeColor,
+    required this.active,
+    required this.onTap,
+  });
+
+  final Color themeColor;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // No Tooltip (the label text already says what tapping it does — a
+    // second, state-dependent tooltip on top was redundant) and no
+    // AnimatedContainer. Both were removed after they lined up with a
+    // Flutter-Web engine assertion spam (_engine/window.dart) — a
+    // Tooltip whose message text changes while it could still be
+    // showing/animating is a known trouble spot on the web renderer, and
+    // this is a plain toggle button, not something that needs a live
+    // color-transition animation.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          decoration: BoxDecoration(
+            color: active ? themeColor.withValues(alpha: 0.12) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: active
+                  ? themeColor.withValues(alpha: 0.5)
+                  : Colors.grey[300]!,
+            ),
+            boxShadow: active ? null : AppShadows.card,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                active ? Icons.history_toggle_off : Icons.history,
+                size: 18,
+                color: active ? themeColor : Colors.grey[700],
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                active ? 'Skjul tidligere rejser' : 'Vis tidligere rejser',
+                style: AppTextStyles.label(
+                    color: active ? themeColor : Colors.grey[800]),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1265,7 +1414,7 @@ class _FilterDialogState extends State<_FilterDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.secondary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       title: Text('Filtrer rejser',
           style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
       content: SingleChildScrollView(
@@ -1277,14 +1426,14 @@ class _FilterDialogState extends State<_FilterDialog> {
             children: [
               Text('Afrejsedato',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               InkWell(
                 onTap: _pickDateRange,
                 child: InputDecorator(
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.calendar_today),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -1296,16 +1445,16 @@ class _FilterDialogState extends State<_FilterDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               Text('Fly inkluderet',
                   style: GoogleFonts.kanit(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               _buildBooleanFilter(
                   label: 'Udrejse',
                   value: _filters.flightAway,
                   onChanged: (val) =>
                       setState(() => _filters.flightAway = val)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               _buildBooleanFilter(
                   label: 'Hjemrejse',
                   value: _filters.flightHome,
@@ -1347,9 +1496,20 @@ class _FilterDialogState extends State<_FilterDialog> {
   }
 }
 
+// Purely administrative bureau fields only (agencyName, returnMail) plus
+// the CRM integrations card and account actions (Gem/Log ud). Everything
+// that's actually shown to a traveler in the app (branding, emergency
+// phone, welcome message, map default) lives exclusively in AppScreen
+// (app_screen.dart) now — deliberately not duplicated here, and saved via
+// a separate callable (updateAppSettings) so the two screens can never
+// clobber each other's fields.
 class BureauSettingsScreen extends StatefulWidget {
   final AgencyInformation agencyInfo;
-  final String? logoUrl;
+  // emergencyPhone/standardMessage/Title aren't on AgencyInformation's
+  // fields shown elsewhere in this screen — same raw-data-map pattern
+  // AppScreen already uses, since these two also live in the App screen's
+  // editor now (see _AppSettingsEditor in app_screen.dart) and are edited
+  // from either place.
   final String? standardMessage;
   final String? standardMessageTitle;
   final bool isNested;
@@ -1357,7 +1517,6 @@ class BureauSettingsScreen extends StatefulWidget {
   const BureauSettingsScreen({
     super.key,
     required this.agencyInfo,
-    this.logoUrl,
     this.standardMessage,
     this.standardMessageTitle,
     this.isNested = false,
@@ -1368,129 +1527,62 @@ class BureauSettingsScreen extends StatefulWidget {
 }
 
 class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
-  // The video preview's aspect ratio, matching how HomeHeroHeader actually
-  // crops it in the app: full device width x a fixed 250 height (see
-  // lib/screens/home/widgets/home_hero_header.dart in the backpack app).
-  // 390 is a representative modern-phone logical width.
-  static const double _heroVideoAspectRatio = 390 / 250;
-
   late TextEditingController _nameController;
-  late TextEditingController _phoneController;
   late TextEditingController _emailController;
-  late TextEditingController _colorController;
+  late TextEditingController _phoneController;
   late TextEditingController _standardMessageController;
   late TextEditingController _standardMessageTitleController;
-  String? _logoUrl;
-  String? _videoUrl;
-  bool _isUploadingLogo = false;
-  bool _isUploadingVideo = false;
-  bool _isLoadingInitialLogo = true;
+
+  // Separate debounce timers per destination/field group — see the same
+  // note on _AppSettingsEditor's timers in app_screen.dart for why a
+  // single shared Timer would be wrong here (rapid edits across fields
+  // would drop all but the last one's save).
+  Timer? _bureauInfoDebounce;
+  Timer? _phoneDebounce;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.agencyInfo.agencyName);
-    _phoneController =
-        TextEditingController(text: widget.agencyInfo.emergencyPhone);
     _emailController =
         TextEditingController(text: widget.agencyInfo.returnMail);
-    _colorController = TextEditingController(text: widget.agencyInfo.mainColor);
+    _phoneController =
+        TextEditingController(text: widget.agencyInfo.emergencyPhone);
     _standardMessageController =
         TextEditingController(text: widget.standardMessage ?? '');
     _standardMessageTitleController =
         TextEditingController(text: widget.standardMessageTitle ?? 'Velkommen');
-    _videoUrl = widget.agencyInfo.videoUrl;
-    _loadInitialLogo();
-  }
-
-  Future<void> _loadInitialLogo() async {
-    try {
-      final ref = FirebaseStorage.instance
-          .ref('config/AgencyLogos/${widget.agencyInfo.agencyCode}.png');
-      final url = await ref.getDownloadURL();
-      if (mounted) {
-        setState(() {
-          _logoUrl = url;
-        });
-      }
-    } catch (e) {
-      // This is expected if no logo has been uploaded yet.
-      debugPrint('No initial logo found: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingInitialLogo = false;
-        });
-      }
-    }
   }
 
   @override
   void dispose() {
+    _bureauInfoDebounce?.cancel();
+    _phoneDebounce?.cancel();
     _nameController.dispose();
-    _phoneController.dispose();
     _emailController.dispose();
-    _colorController.dispose();
+    _phoneController.dispose();
     _standardMessageController.dispose();
     _standardMessageTitleController.dispose();
     super.dispose();
   }
 
-  Color _getColorFromHex(String hexColor) {
+  // agency/{agencyCode} is function-only in firestore.rules — this goes
+  // through updateBureauSettings rather than a direct client write. Only
+  // ever the two purely-administrative fields — see updateBureauSettings
+  // in index.ts for why this deliberately can't touch anything
+  // updateAppSettings owns.
+  Future<void> _saveBureauInfo() async {
     try {
-      return AppColors.fromHex(hexColor);
-    } catch (e) {
-      return Colors.black;
-    }
-  }
-
-  void _showColorPicker() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Vælg farve'),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: _getColorFromHex(_colorController.text),
-            onColorChanged: (color) {
-              setState(() {
-                _colorController.text =
-                    '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
-              });
-            },
-            enableAlpha: false,
-            displayThumbColor: true,
-            paletteType: PaletteType.hsvWithHue,
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            child: const Text('Vælg'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _save() async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('agency')
-          .doc(widget.agencyInfo.agencyCode)
-          .update({
+      await FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('updateBureauSettings')
+          .call({
+        'agencyCode': widget.agencyInfo.agencyCode,
         'agencyName': _nameController.text,
-        'emergencyPhone': _phoneController.text,
         'returnMail': _emailController.text,
-        'mainColor': _colorController.text,
-        'standardMessage': _standardMessageController.text,
-        'standardMessageTitle': _standardMessageTitleController.text,
-        'logoUrl': _logoUrl,
-        'videoUrl': _videoUrl,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Gemt!')));
+        showSavedSnackbar(
+            context, AppColors.fromHex(widget.agencyInfo.mainColor));
       }
     } catch (e) {
       if (mounted) {
@@ -1500,602 +1592,27 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     }
   }
 
-  Future<void> _pickAndUploadLogo() async {
+  // emergencyPhone/standardMessage/Title are also edited from AppScreen's
+  // own editor (a separate mounted widget) — this only ever sends the
+  // field(s) that specific control here owns, via updateAppSettings'
+  // partial update, so it can never clobber mainColor/logoUrl/videoUrl/
+  // mapEnabledDefault (which this screen has no state for at all) or a
+  // more recent edit made from the App screen.
+  Future<void> _saveAppField(Map<String, dynamic> fields) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['png'],
-        withData: true,
-      );
-
-      if (result != null) {
-        setState(() => _isUploadingLogo = true);
-        PlatformFile file = result.files.single;
-        String agencyCode = widget.agencyInfo.agencyCode;
-        Reference storageRef =
-            FirebaseStorage.instance.ref('config/AgencyLogos/$agencyCode.png');
-
-        String mimeType = 'image/png';
-        SettableMetadata metadata = SettableMetadata(contentType: mimeType);
-
-        if (file.bytes != null) {
-          UploadTask uploadTask = storageRef.putData(file.bytes!, metadata);
-          await uploadTask;
-          String downloadUrl = await storageRef.getDownloadURL();
-
-          setState(() {
-            _logoUrl = downloadUrl;
-            _isUploadingLogo = false;
-          });
-        }
+      await FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('updateAppSettings')
+          .call({'agencyCode': widget.agencyInfo.agencyCode, ...fields});
+      if (mounted) {
+        showSavedSnackbar(
+            context, AppColors.fromHex(widget.agencyInfo.mainColor));
       }
     } catch (e) {
-      setState(() => _isUploadingLogo = false);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl ved upload: $e')));
+            .showSnackBar(SnackBar(content: Text('Fejl: $e')));
       }
     }
-  }
-
-  Future<void> _pickAndUploadVideo() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        withData: kIsWeb ? true : false,
-      );
-
-      if (result != null) {
-        setState(() => _isUploadingVideo = true);
-
-        // Delete old video if it exists
-        if (_videoUrl != null && _videoUrl!.isNotEmpty) {
-          try {
-            Reference oldRef = FirebaseStorage.instance.refFromURL(_videoUrl!);
-            await oldRef.delete();
-            debugPrint('Old video deleted successfully');
-          } catch (e) {
-            debugPrint('Error deleting old video: $e');
-            // Continue with upload even if deletion fails (might be a missing file)
-          }
-        }
-
-        PlatformFile file = result.files.single;
-        String agencyCode = widget.agencyInfo.agencyCode;
-        String fileName =
-            'video_${DateTime.now().millisecondsSinceEpoch}.${file.extension ?? 'mp4'}';
-        Reference storageRef =
-            FirebaseStorage.instance.ref('agencies/$agencyCode/$fileName');
-
-        SettableMetadata metadata =
-            SettableMetadata(contentType: 'video/${file.extension ?? 'mp4'}');
-
-        UploadTask uploadTask;
-        if (kIsWeb && file.bytes != null) {
-          uploadTask = storageRef.putData(file.bytes!, metadata);
-        } else if (file.path != null) {
-          uploadTask = storageRef.putFile(File(file.path!), metadata);
-        } else {
-          throw Exception("Ingen data fundet til upload af video");
-        }
-
-        await uploadTask;
-        String downloadUrl = await storageRef.getDownloadURL();
-
-        setState(() {
-          _videoUrl = downloadUrl;
-          _isUploadingVideo = false;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Video uploadet med succes')));
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isUploadingVideo = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Fejl ved upload af video: $e')));
-      }
-    }
-  }
-
-  Future<void> _deleteVideo() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Slet video?'),
-        content: const Text(
-            'Er du sikker på, at du vil slette baggrundsvideoen? Appen vil gå tilbage til standardvideoen.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuller'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Slet', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        if (_videoUrl != null && _videoUrl!.isNotEmpty) {
-          setState(() => _isUploadingVideo = true);
-          Reference storageRef =
-              FirebaseStorage.instance.refFromURL(_videoUrl!);
-          await storageRef.delete();
-        }
-
-        setState(() {
-          _videoUrl = null;
-          _isUploadingVideo = false;
-        });
-
-        // Save immediately to update Firestore
-        await _save();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Video slettet successfully')));
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _isUploadingVideo = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Kunne ikke slette video: $e')));
-        }
-      }
-    }
-  }
-
-  Future<void> _handleLogout() async {
-    context.read<GroupInformationBloc>().add(LogoutEvent());
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('groupId');
-    await prefs.remove('lastEnteredAgencyCode');
-
-    await FirebaseAuth.instance.signOut();
-
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const GroupIDScreen()),
-        (route) => false,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final themeColor = AppColors.fromHex(widget.agencyInfo.mainColor);
-
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldGradientStart,
-      appBar: widget.isNested
-          ? null
-          : AppBar(
-              title: Text('Bureauindstillinger',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
-              backgroundColor: themeColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-            ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 900;
-
-            final brandingColumn = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildBrandingCard(themeColor),
-              ],
-            );
-
-            final detailsColumn = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildSectionTitle('Kontaktinformation'),
-                _buildContactCard(),
-                const SizedBox(height: 16),
-                _buildSectionTitle('Velkomstbesked'),
-                _buildWelcomeMessageCard(themeColor),
-                const SizedBox(height: 16),
-                _buildSectionTitle('Integrationer'),
-                _buildIntegrationsCardWithAdminAccess(themeColor),
-              ],
-            );
-
-            return Column(
-              children: [
-                if (isWide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 2, child: brandingColumn),
-                      const SizedBox(width: 20),
-                      Expanded(flex: 3, child: detailsColumn),
-                    ],
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      brandingColumn,
-                      const SizedBox(height: 20),
-                      detailsColumn,
-                    ],
-                  ),
-                const SizedBox(height: 20),
-                _buildActionButtons(themeColor),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: _handleLogout,
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: Text('Log ud',
-                        style: GoogleFonts.kanit(
-                            fontSize: 14, fontWeight: FontWeight.w500)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: BorderSide(
-                          color: Colors.red.withOpacity(0.5), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
-                  style:
-                      GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: GoogleFonts.kanit(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBrandingCard(Color themeColor) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final previewWidth =
-                  constraints.maxWidth > 420 ? 420.0 : constraints.maxWidth;
-              return Center(
-                child: SizedBox(
-                  width: previewWidth,
-                  // Matches the real crop: HomeHeroHeader shows this video at
-                  // full device width x a fixed 250 height (see
-                  // lib/screens/home/widgets/home_hero_header.dart in the
-                  // backpack app), not a square/portrait frame.
-                  child: AspectRatio(
-                    aspectRatio: _heroVideoAspectRatio,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: themeColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Background Video
-                            if (_videoUrl != null && _videoUrl!.isNotEmpty)
-                              BackgroundVideo(videoUrl: _videoUrl)
-                            else
-                              const BackgroundVideo(
-                                  videoUrl: null), // Default video
-
-                            // Dim overlay to make logo pop
-                            Container(color: Colors.black26),
-
-                            // Agency Logo or Loading
-                            GestureDetector(
-                              onTap: _pickAndUploadLogo,
-                              child: (_isUploadingLogo || _isLoadingInitialLogo)
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.white)
-                                  : _logoUrl != null
-                                      ? Padding(
-                                          padding: const EdgeInsets.all(20.0),
-                                          child: CachedNetworkImage(
-                                            imageUrl: _logoUrl!,
-                                            fit: BoxFit.contain,
-                                            placeholder: (context, url) =>
-                                                const CircularProgressIndicator(
-                                                    color: Colors.white),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(Icons.business,
-                                                        size: 36,
-                                                        color: Colors.white70),
-                                          ),
-                                        )
-                                      : Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                                Icons
-                                                    .add_photo_alternate_outlined,
-                                                size: 32,
-                                                color: Colors.white70),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              'Tilføj logo',
-                                              style: GoogleFonts.kanit(
-                                                  fontSize: 12,
-                                                  color: Colors.white70,
-                                                  fontWeight: FontWeight.w500),
-                                            ),
-                                          ],
-                                        ),
-                            ),
-
-                            // Uploading Video Indicator overlay
-                            if (_isUploadingVideo)
-                              Container(
-                                color: Colors.black45,
-                                child: const Center(
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white),
-                                ),
-                              ),
-
-                            // Delete Video Button
-                            if (_videoUrl != null &&
-                                _videoUrl!.isNotEmpty &&
-                                !_isUploadingVideo)
-                              Positioned(
-                                top: 6,
-                                right: 6,
-                                child: IconButton(
-                                  icon: const Icon(Icons.videocam_off,
-                                      color: Colors.white, size: 16),
-                                  onPressed: _deleteVideo,
-                                  tooltip: 'Slet baggrundsvideo',
-                                  padding: const EdgeInsets.all(4),
-                                  constraints: const BoxConstraints(),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.black45,
-                                  ),
-                                ),
-                              ),
-
-                            // Label indicator
-                            Positioned(
-                              bottom: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.black45,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'FORVISNING',
-                                  style: GoogleFonts.kanit(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    letterSpacing: 1.1,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildCompactActionButton(
-                icon: Icons.image,
-                label: 'Logo',
-                onTap: _isUploadingLogo || _isLoadingInitialLogo
-                    ? () {}
-                    : _pickAndUploadLogo,
-                color: themeColor,
-              ),
-              const SizedBox(width: 8),
-              _buildCompactActionButton(
-                icon: Icons.video_library,
-                label: 'Video',
-                onTap: _isUploadingVideo ? () {} : _pickAndUploadVideo,
-                color: themeColor,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: _showColorPicker,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: _getColorFromHex(_colorController.text),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _colorController,
-                    decoration: InputDecoration(
-                      labelText: 'Primær farve',
-                      labelStyle: GoogleFonts.kanit(
-                          fontSize: 12, color: Colors.grey[600]),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: GoogleFonts.kanit(fontSize: 14),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.palette, color: Colors.grey, size: 20),
-                  onPressed: _showColorPicker,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    required Color color,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.kanit(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContactCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _buildTextField(
-            controller: _nameController,
-            label: 'Bureau Navn',
-            icon: Icons.business,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _phoneController,
-            label: 'Nødtelefon',
-            icon: Icons.phone,
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _emailController,
-            label: 'Kontakt e-mail',
-            icon: Icons.email,
-            keyboardType: TextInputType.emailAddress,
-          ),
-        ],
-      ),
-    );
   }
 
   void _showWelcomeMessageDialog() {
@@ -2111,7 +1628,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
               controller: _standardMessageTitleController,
               decoration: const InputDecoration(labelText: 'Titel'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: _standardMessageController,
               decoration: const InputDecoration(labelText: 'Besked'),
@@ -2128,6 +1645,10 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
             onPressed: () {
               setState(() {});
               Navigator.pop(context);
+              _saveAppField({
+                'standardMessage': _standardMessageController.text,
+                'standardMessageTitle': _standardMessageTitleController.text,
+              });
             },
             child: const Text('Gem'),
           ),
@@ -2139,19 +1660,13 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
   Widget _buildWelcomeMessageCard(Color themeColor) {
     return InkWell(
       onTap: _showWelcomeMessageDialog,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadii.lgRadius,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: AppRadii.lgRadius,
+          boxShadow: AppShadows.card,
         ),
         child: Row(
           children: [
@@ -2160,7 +1675,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
               height: 40,
               decoration: BoxDecoration(
                 color: themeColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.mdRadius,
               ),
               child: Icon(Icons.message_outlined, color: themeColor, size: 20),
             ),
@@ -2182,8 +1697,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                         : 'Tryk for at tilføje besked',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                        fontSize: 12, color: Colors.grey[600]),
+                    style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -2191,6 +1705,144 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
             Icon(Icons.chevron_right, color: Colors.grey[400]),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _handleLogout() => performLogout(context);
+
+  @override
+  Widget build(BuildContext context) {
+    final themeColor = AppColors.fromHex(widget.agencyInfo.mainColor);
+
+    return Scaffold(
+      backgroundColor: AppColors.scaffoldGradientStart,
+      appBar: widget.isNested
+          ? null
+          : AppBar(
+              title: Text('Bureauindstillinger',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+              backgroundColor: themeColor,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: true,
+            ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildSectionTitle('Kontaktinformation'),
+            _buildContactCard(),
+            const SizedBox(height: AppSpacing.lg),
+            _buildSectionTitle('Nødtelefon'),
+            _buildPhoneCard(),
+            const SizedBox(height: AppSpacing.lg),
+            _buildSectionTitle('Velkomstbesked'),
+            _buildWelcomeMessageCard(themeColor),
+            const SizedBox(height: AppSpacing.lg),
+            _buildSectionTitle('Integrationer'),
+            _buildIntegrationsCardWithAdminAccess(themeColor),
+            const SizedBox(height: AppSpacing.xl),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _handleLogout,
+                icon: const Icon(Icons.logout, size: 18),
+                label: Text('Log ud',
+                    style: GoogleFonts.kanit(
+                        fontSize: 14, fontWeight: FontWeight.w500)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: BorderSide(
+                      color: Colors.red.withOpacity(0.5), width: 1.5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
+              style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          style: AppTextStyles.heading(),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildContactCard() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        children: [
+          _buildTextField(
+            controller: _nameController,
+            label: 'Bureau Navn',
+            icon: Icons.business,
+            helperText: 'Internt navn — vises ikke i appen',
+            onChanged: (_) => _debouncedSaveBureauInfo(),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _buildTextField(
+            controller: _emailController,
+            label: 'Kontakt e-mail',
+            icon: Icons.email,
+            keyboardType: TextInputType.emailAddress,
+            onChanged: (_) => _debouncedSaveBureauInfo(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _debouncedSaveBureauInfo() {
+    _bureauInfoDebounce?.cancel();
+    _bureauInfoDebounce =
+        Timer(const Duration(milliseconds: 700), _saveBureauInfo);
+  }
+
+  Widget _buildPhoneCard() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
+      ),
+      child: _buildTextField(
+        controller: _phoneController,
+        label: 'Nødtelefon',
+        icon: Icons.phone,
+        keyboardType: TextInputType.phone,
+        helperText: 'Vist til rejsende i appens nødhjælps-dialog',
+        onChanged: (value) {
+          _phoneDebounce?.cancel();
+          _phoneDebounce = Timer(
+              const Duration(milliseconds: 700),
+              () => _saveAppField({'emergencyPhone': value}));
+        },
       ),
     );
   }
@@ -2268,7 +1920,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                     ],
                   ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         _buildIntegrationTile(
           themeColor: themeColor,
           icon: Icons.alternate_email,
@@ -2294,7 +1946,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                     ],
                   ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.md),
         _buildIntegrationTile(
           themeColor: themeColor,
           icon: Icons.auto_awesome,
@@ -2343,19 +1995,13 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     final iconColor = isActivated ? themeColor : Colors.grey[400]!;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadii.lgRadius,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: AppRadii.lgRadius,
+          boxShadow: AppShadows.card,
         ),
         child: Row(
           children: [
@@ -2366,7 +2012,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                 color: isActivated
                     ? themeColor.withValues(alpha: 0.1)
                     : Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.mdRadius,
               ),
               child: Icon(icon, color: iconColor, size: 20),
             ),
@@ -2382,13 +2028,13 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                               fontWeight: FontWeight.w600,
                               color: Colors.black87)),
                       if (!isActivated) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.sm),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF4E5),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: AppRadii.lgRadius,
                           ),
                           child: Text('Ikke i din plan',
                               style: GoogleFonts.kanit(
@@ -2411,7 +2057,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                 onChanged: onToggle,
                 activeThumbColor: themeColor,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: AppSpacing.xs),
             ],
             Icon(Icons.chevron_right, color: Colors.grey[400]),
           ],
@@ -2435,7 +2081,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         title: Row(
           children: [
             Container(
@@ -2443,15 +2089,14 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
               height: 40,
               decoration: BoxDecoration(
                 color: themeColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.mdRadius,
               ),
               child: Icon(icon, color: themeColor, size: 20),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(title,
-                  style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.bold, fontSize: 18)),
+                  style: AppTextStyles.headingBold()),
             ),
           ],
         ),
@@ -2465,7 +2110,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                 Text(description,
                     style: GoogleFonts.kanit(
                         color: Colors.black87, height: 1.4, fontSize: 13.5)),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 ...highlights.map((h) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
@@ -2473,21 +2118,20 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                         children: [
                           Icon(Icons.check_circle,
                               size: 16, color: themeColor),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(h,
-                                style: GoogleFonts.kanit(
-                                    fontSize: 13, color: Colors.black87)),
+                                style: AppTextStyles.body()),
                           ),
                         ],
                       ),
                     )),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFF4E5),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2498,7 +2142,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                       Expanded(
                         child: Text(
                           'Denne funktion er ikke inkluderet i jeres nuværende '
-                          'plan. Kontakt BackPack på kontact@backpack-app.dk for '
+                          'plan. Kontakt BackPack på kontakt@backpack-app.dk for '
                           'at få den tilføjet.',
                           style: GoogleFonts.kanit(
                               fontSize: 12.5, color: const Color(0xFF9A6700)),
@@ -2521,7 +2165,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
             onPressed: () async {
               final uri = Uri(
                 scheme: 'mailto',
-                path: 'kontact@backpack-app.dk',
+                path: 'kontakt@backpack-app.dk',
                 query:
                     'subject=${Uri.encodeComponent('Tilføj "$title" til vores plan')}',
               );
@@ -2572,12 +2216,14 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? helperText,
+    ValueChanged<String>? onChanged,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
       style: GoogleFonts.kanit(),
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
         helperText: helperText,
@@ -2585,15 +2231,15 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         labelStyle: GoogleFonts.kanit(color: Colors.grey[600]),
         prefixIcon: Icon(icon, color: Colors.grey[400], size: 20),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
         ),
         filled: true,
@@ -2604,31 +2250,6 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     );
   }
 
-  Widget _buildActionButtons(Color themeColor) {
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton.icon(
-            onPressed: _save,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: themeColor,
-              foregroundColor: Colors.white,
-              elevation: 4,
-              shadowColor: themeColor.withOpacity(0.4),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-            ),
-            icon: const Icon(Icons.save_rounded),
-            label: Text('Gem ændringer',
-                style: GoogleFonts.kanit(
-                    fontSize: 18, fontWeight: FontWeight.w600)),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class AgencyImagesScreen extends StatefulWidget {
@@ -2853,7 +2474,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                         maxWidth: MediaQuery.of(context).size.width * 0.5,
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(AppSpacing.lg),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -2861,9 +2482,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Beskær & Zoom',
-                                    style: GoogleFonts.kanit(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold)),
+                                    style: AppTextStyles.headingBold()),
                                 IconButton(
                                     icon: const Icon(Icons.close),
                                     onPressed: () =>
@@ -2886,14 +2505,13 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 10),
                                   child: Text('Zoom ud/ind herover',
-                                      style: GoogleFonts.kanit(
-                                          color: Colors.grey, fontSize: 13)),
+                                      style: AppTextStyles.body(color: Colors.grey)),
                                 ),
                                 const Icon(Icons.zoom_in,
                                     size: 20, color: Colors.grey),
                               ],
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: AppSpacing.xl),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
@@ -3272,7 +2890,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Material(
                         color: Colors.white.withOpacity(0.9),
                         shape: const CircleBorder(),
@@ -3384,8 +3002,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                   ),
                 ] else ...[
                   Text(_currentPath.isEmpty ? 'Hovedmappe' : _currentPath,
-                      style: GoogleFonts.kanit(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
+                      style: AppTextStyles.headingBold()),
                   const Spacer(),
                   if (_images.isNotEmpty)
                     OutlinedButton.icon(
@@ -3410,7 +3027,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                             children: [
                               Icon(Icons.photo_library_outlined,
                                   size: 64, color: Colors.grey[300]),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.lg),
                               Text('Mappen er tom',
                                   style: GoogleFonts.kanit(
                                       fontSize: 18,
@@ -3420,7 +3037,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                           ),
                         )
                       : Padding(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(AppSpacing.xl),
                           child: CustomScrollView(slivers: [
                             if (_folders.isNotEmpty)
                               SliverToBoxAdapter(
@@ -3451,12 +3068,12 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                                               () => _currentPath = folder.name);
                                           _loadImages();
                                         },
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: AppRadii.mdRadius,
                                         child: Container(
                                             decoration: BoxDecoration(
                                                 color: Colors.white,
                                                 borderRadius:
-                                                    BorderRadius.circular(12),
+                                                    AppRadii.mdRadius,
                                                 boxShadow: [
                                                   BoxShadow(
                                                       color: Colors.black
@@ -3472,7 +3089,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                                             child: Row(children: [
                                               Icon(Icons.folder,
                                                   color: widget.mainColor),
-                                              const SizedBox(width: 12),
+                                              const SizedBox(width: AppSpacing.md),
                                               Expanded(
                                                   child: Text(folder.name,
                                                       style: GoogleFonts.kanit(
@@ -3587,7 +3204,13 @@ class _PackingListLibraryScreenState extends State<PackingListLibraryScreen> {
             currentLibrary.add(category);
           }
 
-          await docRef.update({'packingListLibrary': currentLibrary});
+          // agency/{agencyCode} is function-only in firestore.rules.
+          await FirebaseFunctions.instanceFor(region: 'europe-west1')
+              .httpsCallable('updateAgencyPackingListLibrary')
+              .call({
+            'agencyCode': widget.agencyCode,
+            'packingListLibrary': currentLibrary,
+          });
         },
       ),
     );
@@ -3613,10 +3236,13 @@ class _PackingListLibraryScreenState extends State<PackingListLibraryScreen> {
 
     if (confirm == true) {
       currentLibrary.removeAt(index);
-      await FirebaseFirestore.instance
-          .collection('agency')
-          .doc(widget.agencyCode)
-          .update({'packingListLibrary': currentLibrary});
+      // agency/{agencyCode} is function-only in firestore.rules.
+      await FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('updateAgencyPackingListLibrary')
+          .call({
+        'agencyCode': widget.agencyCode,
+        'packingListLibrary': currentLibrary,
+      });
     }
   }
 
@@ -3661,23 +3287,17 @@ class _PackingListLibraryScreenState extends State<PackingListLibraryScreen> {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             itemCount: library.length,
             itemBuilder: (context, index) {
               final category = library[index];
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: AppShadows.card,
                 ),
                 child: Row(
                   children: [
@@ -3686,7 +3306,7 @@ class _PackingListLibraryScreenState extends State<PackingListLibraryScreen> {
                       height: 44,
                       decoration: BoxDecoration(
                         color: widget.mainColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadii.mdRadius,
                       ),
                       child: Icon(
                         MdiIcons.fromString(
@@ -3821,21 +3441,21 @@ class _PackingListCategoryDialogState
       builder: (iconDialogContext) => Dialog(
         backgroundColor: AppColors.iconPickerDialog,
         shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+            RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.7,
             maxWidth: MediaQuery.of(context).size.width * 0.4,
           ),
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text('Vælg ikon',
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 Expanded(
                   child: GridView.builder(
                     gridDelegate:
@@ -3857,7 +3477,7 @@ class _PackingListCategoryDialogState
                               color: isSelected
                                   ? Colors.brown[400]
                                   : Colors.brown[100],
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius: AppRadii.mdRadius),
                           child: Icon(entry.value,
                               size: 36,
                               color:
@@ -3887,7 +3507,7 @@ class _PackingListCategoryDialogState
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3903,7 +3523,7 @@ class _PackingListCategoryDialogState
                     ),
                     child: Icon(Icons.edit_note, color: themeColor, size: 24),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: AppSpacing.lg),
                   Text(
                     widget.category == null
                         ? 'Ny Kategori'
@@ -3913,7 +3533,7 @@ class _PackingListCategoryDialogState
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xxl),
 
               // Name Field
               TextField(
@@ -3924,13 +3544,13 @@ class _PackingListCategoryDialogState
                   prefixIcon:
                       Icon(Icons.label_outline, color: Colors.grey[400]),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadii.mdRadius),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     borderSide: BorderSide(color: Colors.grey[300]!),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     borderSide: BorderSide(color: themeColor, width: 2),
                   ),
                   filled: true,
@@ -3938,23 +3558,23 @@ class _PackingListCategoryDialogState
                 ),
                 style: GoogleFonts.kanit(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
 
               // Icon Picker
               InkWell(
                 onTap: _pickIcon,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadii.mdRadius,
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
@@ -3972,7 +3592,7 @@ class _PackingListCategoryDialogState
                           size: 24,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: AppSpacing.lg),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -3991,15 +3611,14 @@ class _PackingListCategoryDialogState
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xxl),
 
               // Items Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Indhold',
-                      style: GoogleFonts.kanit(
-                          fontSize: 18, fontWeight: FontWeight.w600)),
+                      style: AppTextStyles.heading()),
                   TextButton.icon(
                     onPressed: _addItem,
                     icon: Icon(Icons.add_circle_outline,
@@ -4016,14 +3635,14 @@ class _PackingListCategoryDialogState
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
 
               // Items List
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     border: Border.all(color: Colors.grey[200]!),
                   ),
                   child: _items.isEmpty
@@ -4033,7 +3652,7 @@ class _PackingListCategoryDialogState
                             children: [
                               Icon(Icons.format_list_bulleted,
                                   color: Colors.grey[300], size: 48),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.sm),
                               Text('Ingen genstande tilføjet',
                                   style: GoogleFonts.kanit(
                                       color: Colors.grey[500])),
@@ -4041,7 +3660,7 @@ class _PackingListCategoryDialogState
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(AppSpacing.sm),
                           itemCount: _items.length,
                           separatorBuilder: (context, index) =>
                               const Divider(height: 1),
@@ -4065,7 +3684,7 @@ class _PackingListCategoryDialogState
                         ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xxl),
 
               // Actions
               Row(
@@ -4076,7 +3695,7 @@ class _PackingListCategoryDialogState
                     child: Text('Annuller',
                         style: GoogleFonts.kanit(color: Colors.grey[600])),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   ElevatedButton(
                     onPressed: () {
                       if (_nameController.text.isNotEmpty) {
@@ -4095,7 +3714,7 @@ class _PackingListCategoryDialogState
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 12),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: AppRadii.mdRadius),
                     ),
                     child: Text('Gem',
                         style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
@@ -4230,6 +3849,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
           departureFrom: widget.originalGroup.departureFrom,
           returnTo: widget.originalGroup.returnTo,
           isTemplate: _isTemplate,
+          mapEnabled: widget.originalGroup.mapEnabled,
         );
 
         await FirebaseFirestore.instance
@@ -4255,6 +3875,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
           'departureFrom': group.departureFrom,
           'returnTo': group.returnTo,
           'isTemplate': group.isTemplate,
+          'mapEnabled': group.mapEnabled,
         });
 
         await FirebaseStorage.instance
@@ -4279,7 +3900,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.secondary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       title: Text('Dupliker rejse',
           style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
       content: SizedBox(
@@ -4296,26 +3917,26 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                     labelText: 'Gruppe Navn',
                     prefixIcon: const Icon(Icons.label),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                   validator: (v) => v!.isEmpty ? 'Påkrævet' : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 TextFormField(
                   controller: _groupIdController,
                   decoration: InputDecoration(
                     labelText: 'Ny Gruppe ID',
                     prefixIcon: const Icon(Icons.vpn_key),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                   validator: (v) => v!.isEmpty ? 'Påkrævet' : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 Row(
                   children: [
                     Expanded(
@@ -4337,7 +3958,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                             labelText: 'Ny Afrejse',
                             prefixIcon: const Icon(Icons.calendar_today),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                             filled: true,
                             fillColor: Colors.white,
                           ),
@@ -4346,7 +3967,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(
                       child: InkWell(
                         onTap: () async {
@@ -4366,7 +3987,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                             labelText: 'Ny Hjemkomst',
                             prefixIcon: const Icon(Icons.event),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                             filled: true,
                             fillColor: Colors.white,
                           ),
@@ -4377,7 +3998,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -4386,11 +4007,11 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                         color: Colors.grey[600], fontSize: 14),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: SwitchListTile(
@@ -4420,7 +4041,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                  borderRadius: AppRadii.mdRadius),
             ),
             onPressed: _isLoading ? null : _duplicateGroup,
             child: _isLoading
@@ -4459,6 +4080,9 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
   List<Map<String, dynamic>> _library = [];
   final Set<int> _selectedLibraryIndices = {};
   bool _loadingLibrary = true;
+  // Bureau-wide default for a new group's own mapEnabled field (see
+  // BureauSettingsScreen's "App-indstillinger" toggle).
+  bool _agencyMapEnabledDefault = false;
 
   @override
   void initState() {
@@ -4472,10 +4096,13 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           .collection('agency')
           .doc(widget.agencyCode)
           .get();
-      if (doc.exists && doc.data()!.containsKey('packingListLibrary')) {
+      final data = doc.data();
+      _agencyMapEnabledDefault =
+          data?['mapEnabledDefault'] as bool? ?? false;
+      if (doc.exists && data!.containsKey('packingListLibrary')) {
         setState(() {
           _library = List<Map<String, dynamic>>.from(
-              doc.data()!['packingListLibrary']);
+              data['packingListLibrary']);
           _loadingLibrary = false;
         });
       } else {
@@ -4543,6 +4170,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           departureFrom: '',
           returnTo: '',
           isTemplate: _isTemplate,
+          mapEnabled: _agencyMapEnabledDefault,
         );
 
         await FirebaseFirestore.instance
@@ -4568,6 +4196,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           'departureFrom': group.departureFrom,
           'returnTo': group.returnTo,
           'isTemplate': group.isTemplate,
+          'mapEnabled': group.mapEnabled,
         });
 
         // Add standard message if exists
@@ -4606,7 +4235,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.secondary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       title: Text('Tilføj ny rejse',
           style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
       content: SizedBox(
@@ -4618,15 +4247,15 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
                     color: Colors.white54,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                   ),
                   child: Row(
                     children: [
                       const Icon(Icons.business, color: Colors.black54),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -4643,33 +4272,33 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 TextFormField(
                   controller: _groupNameController,
                   decoration: InputDecoration(
                     labelText: 'Gruppe Navn',
                     prefixIcon: const Icon(Icons.label),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                   validator: (v) => v!.isEmpty ? 'Påkrævet' : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 TextFormField(
                   controller: _groupIdController,
                   decoration: InputDecoration(
                     labelText: 'Gruppe ID',
                     prefixIcon: const Icon(Icons.vpn_key),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                   validator: (v) => v!.isEmpty ? 'Påkrævet' : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 if (_loadingLibrary)
                   const Center(child: CircularProgressIndicator())
                 else if (_library.isNotEmpty) ...[
@@ -4678,12 +4307,12 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                     child: Text('Vælg pakkelister',
                         style: GoogleFonts.kanit(color: Colors.grey[600])),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.sm),
                   Container(
                     constraints: const BoxConstraints(maxHeight: 150),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                     ),
                     child: ListView.builder(
                       shrinkWrap: true,
@@ -4708,7 +4337,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                       },
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                 ],
                 Row(
                   children: [
@@ -4731,7 +4360,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                             labelText: 'Afrejse',
                             prefixIcon: const Icon(Icons.calendar_today),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                             filled: true,
                             fillColor: Colors.white,
                           ),
@@ -4740,7 +4369,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(
                       child: InkWell(
                         onTap: () async {
@@ -4760,7 +4389,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                             labelText: 'Hjemkomst',
                             prefixIcon: const Icon(Icons.event),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                             filled: true,
                             fillColor: Colors.white,
                           ),
@@ -4771,7 +4400,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -4780,11 +4409,11 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                         color: Colors.grey[600], fontSize: 14),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: SwitchListTile(
@@ -4814,7 +4443,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
             backgroundColor: AppColors.primary,
             foregroundColor: AppColors.onPrimary,
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
           ),
           onPressed: _saveGroup,
           child: const Text('Opret'),

@@ -1,4 +1,5 @@
 import 'package:backend/models/group_information_model.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:flutter/material.dart';
@@ -14,12 +15,19 @@ class TimelineEventBox extends StatelessWidget {
   final TimelineEvent event;
   final GroupInformation groupInformation;
   final GroupInformationRepository repository;
+  // TimelineDialog (opened on tap) is a fully editable form with no
+  // read-only mode of its own — rather than build a parallel view-only
+  // rendering of it, tapping is simply disabled for staff without
+  // `trips.edit`. The card itself already surfaces the type/day/country/
+  // date at a glance.
+  final bool canEdit;
 
   const TimelineEventBox({
     super.key,
     required this.event,
     required this.groupInformation,
     required this.repository,
+    this.canEdit = true,
   });
 
   @override
@@ -37,28 +45,31 @@ class TimelineEventBox extends StatelessWidget {
       child: SizedBox(
         width: 375,
         child: GestureDetector(
-          onTap: () async {
-            await showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return TimelineDialog(
-                  event: event,
-                  groupInformation: groupInformation,
-                  repository: repository,
-                );
-              },
-            );
-            // After the dialog is closed, trigger a refresh of the group information.
-            if (context.mounted) {
-              context.read<GroupInformationBloc>().add(
-                  LoadGroupInformationById(groupId: groupInformation.groupId));
-            }
-          },
+          onTap: !canEdit
+              ? null
+              : () async {
+                  await showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return TimelineDialog(
+                        event: event,
+                        groupInformation: groupInformation,
+                        repository: repository,
+                      );
+                    },
+                  );
+                  // After the dialog is closed, trigger a refresh of the group information.
+                  if (context.mounted) {
+                    context.read<GroupInformationBloc>().add(
+                        LoadGroupInformationById(
+                            groupId: groupInformation.groupId));
+                  }
+                },
           child: Container(
             width: MediaQuery.of(context).size.width * 0.9,
             height: 150,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10.0),
+              borderRadius: AppRadii.smRadius,
               color: Colors.grey[300], // Fallback farve
               boxShadow: [
                 BoxShadow(
@@ -74,7 +85,7 @@ class TimelineEventBox extends StatelessWidget {
                 if (isValidUrl)
                   Positioned.fill(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10.0),
+                      borderRadius: AppRadii.smRadius,
                       child: CachedNetworkImage(
                         imageUrl: processedUrl,
                         fit: BoxFit.cover,
@@ -107,14 +118,14 @@ class TimelineEventBox extends StatelessWidget {
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10.0),
+                        borderRadius: AppRadii.smRadius,
                         color: Colors.black.withOpacity(0.2),
                       ),
                     ),
                   ),
                 // Tekst indhold
                 Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.start,

@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:backend/config/design.dart';
 import 'package:flutter/material.dart';
 import 'package:backend/models/coupon_model.dart' as CouponModel;
 import 'package:google_fonts/google_fonts.dart';
@@ -32,7 +33,7 @@ class _CouponState extends State<Coupon> {
             // Display the coupon name
             subtitle: Center(
                 child: Padding(
-              padding: const EdgeInsets.all(4.0),
+              padding: const EdgeInsets.all(AppSpacing.xs),
               child: Text(
                 widget.coupon.description,
                 style: TextStyle(

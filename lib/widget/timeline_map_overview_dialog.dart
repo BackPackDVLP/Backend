@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:backend/config/design.dart';
 import 'dart:convert';
 
 import 'package:backend/config/app_colors.dart';
@@ -121,8 +122,8 @@ class _TimelineMapOverviewDialogState
 
     return Dialog(
       backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.all(24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.all(AppSpacing.xxl),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       child: SizedBox(
         width: 1100,
         height: 720,
@@ -136,8 +137,7 @@ class _TimelineMapOverviewDialogState
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text('Verificer lokationer på kort',
-                        style: GoogleFonts.kanit(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                        style: AppTextStyles.headingBold()),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -503,12 +503,12 @@ class _EventLocationRowState extends State<_EventLocationRow> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: widget.isSelected
             ? AppColors.primary.withOpacity(0.08)
             : Colors.grey.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         border: Border.all(
           color: widget.isSelected ? AppColors.primary : Colors.transparent,
           width: 1.5,
@@ -558,16 +558,16 @@ class _EventLocationRowState extends State<_EventLocationRow> {
           TextField(
             controller: _controller,
             onChanged: _onChanged,
-            style: GoogleFonts.kanit(fontSize: 13),
+            style: AppTextStyles.body(),
             decoration: InputDecoration(
               isDense: true,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               hintText: 'Søg adresse eller by',
-              hintStyle: GoogleFonts.kanit(fontSize: 13),
+              hintStyle: AppTextStyles.body(),
               suffixIcon: _loading
                   ? const Padding(
-                      padding: EdgeInsets.all(12),
+                      padding: EdgeInsets.all(AppSpacing.md),
                       child: SizedBox(
                         width: 12,
                         height: 12,

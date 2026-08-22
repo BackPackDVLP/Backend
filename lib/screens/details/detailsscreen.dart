@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:backend/config/design.dart';
 
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -22,11 +23,18 @@ class _MapBackfillPlan {
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
   final GroupInformationRepository repository;
+  // Whether the signed-in staff member's role grants `trips.edit`. Unlike
+  // homescreen.dart's per-row edit icons, this whole screen is a single
+  // form with one save action — rather than gating ~15 individual fields,
+  // the form body is made inert via AbsorbPointer and the save FAB hidden
+  // when this is false.
+  final bool canEditTrips;
 
   const GroupDetailsScreen({
     super.key,
     required this.groupId,
     required this.repository,
+    this.canEditTrips = true,
   });
 
   @override
@@ -209,7 +217,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           'limit': '1',
         });
         final response = await http.get(uri, headers: {
-          'User-Agent': 'BackpackControlpanel/1.0 (kontact@backpack-app.dk)',
+          'User-Agent': 'BackpackControlpanel/1.0 (kontakt@backpack-app.dk)',
         });
 
         if (response.statusCode == 200) {
@@ -291,7 +299,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         title: Row(
           children: [
             Icon(Icons.map_outlined, color: AppColors.darkGreen),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Text('Opdater pinpoints',
                 style:
                     GoogleFonts.kanit(fontWeight: FontWeight.bold, fontSize: 20)),
@@ -305,12 +313,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 'Finder placering for ${plan.toGeocode.length} begivenhed${plan.toGeocode.length == 1 ? '' : 'er'} ud fra landefeltet.',
                 style: GoogleFonts.kanit(fontSize: 14)),
             if (plan.customCount > 0) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.mdRadius,
                   border: Border.all(color: Colors.orange.withOpacity(0.4)),
                 ),
                 child: Row(
@@ -322,8 +330,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     Expanded(
                       child: Text(
                           '${plan.customCount} begivenhed${plan.customCount == 1 ? '' : 'er'} har en specifik adresse indtastet manuelt. De røres ikke af denne handling.',
-                          style: GoogleFonts.kanit(
-                              fontSize: 13, color: Colors.black87)),
+                          style: AppTextStyles.body()),
                     ),
                   ],
                 ),
@@ -342,7 +349,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
               shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
             ),
             onPressed: () => Navigator.of(context).pop(true),
             child: Text('Fortsæt',
@@ -376,7 +383,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               children: [
                 Icon(existingCoupon == null ? Icons.add_circle : Icons.edit,
                     color: AppColors.darkGreen),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Text(
                   existingCoupon == null ? 'Tilføj Kupon' : 'Rediger Kupon',
                   style: GoogleFonts.kanit(
@@ -391,7 +398,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 children: [
                   if (imageUrlController.text.isNotEmpty) ...[
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       child: Container(
                         height: 120,
                         width: double.infinity,
@@ -414,7 +421,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                   ],
                   _buildDialogField(
                     controller: nameController,
@@ -422,7 +429,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     hint: 'F.eks. 20% rabat på Safari',
                     icon: Icons.label_outline,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildDialogField(
                     controller: descriptionController,
                     label: 'Beskrivelse',
@@ -430,7 +437,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     icon: Icons.description_outlined,
                     maxLines: 2,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildDialogField(
                     controller: imageUrlController,
                     label: 'Billed-URL',
@@ -438,7 +445,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     icon: Icons.image_outlined,
                     onChanged: (val) => setDialogState(() {}),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildDialogField(
                     controller: linkController,
                     label: 'Link',
@@ -459,7 +466,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.onPrimary,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadii.mdRadius),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
@@ -524,10 +531,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 4),
           child: Text(label,
-              style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.black87)),
+              style: AppTextStyles.label()),
         ),
         TextFormField(
           controller: controller,
@@ -541,15 +545,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: Colors.grey[350]!),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: Colors.grey[300]!),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
             ),
           ),
@@ -600,7 +604,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           children: [
             Icon(existing == null ? Icons.add_circle : Icons.edit,
                 color: AppColors.darkGreen),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Text(
               existing == null ? 'Tilføj Punkt' : 'Rediger Punkt',
               style:
@@ -626,7 +630,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             onPressed: () async {
@@ -677,7 +681,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           ),
         ),
         child: SafeArea(
-          child: Form(
+          child: AbsorbPointer(
+            absorbing: !widget.canEditTrips,
+            child: Form(
             key: _formKey,
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -688,15 +694,15 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   icon: Icons.flight_takeoff,
                   children: [
                     _buildDateRow(),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     _buildTextFormField(
                         _departureFromController,
                         'Afrejse fra / Rejsen starter i',
                         Icons.location_on_outlined),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     _buildTextFormField(_returnToController,
                         'Hjemkomst til / Rejsen slutter i', Icons.location_on),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     _buildTextFormField(_emergencyPhoneController,
                         'Nødtelefon', Icons.phone,
                         keyboardType: TextInputType.phone, isRequired: false),
@@ -805,18 +811,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 travelSection,
-                                const SizedBox(height: 16),
+                                const SizedBox(height: AppSpacing.lg),
                                 settingsSection,
                               ],
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: AppSpacing.lg),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 preDepartureSection,
-                                const SizedBox(height: 16),
+                                const SizedBox(height: AppSpacing.lg),
                                 couponsSection,
                               ],
                             ),
@@ -827,11 +833,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           travelSection,
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.lg),
                           settingsSection,
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.lg),
                           preDepartureSection,
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.lg),
                           couponsSection,
                         ],
                       );
@@ -842,24 +848,28 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildTripHeader(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       content,
                     ],
                   ),
                 );
               },
             ),
+            ),
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _saveGroupDetails,
-        backgroundColor: AppColors.primary,
-        label: Text('Gem ændringer',
-            style: GoogleFonts.kanit(
-                fontWeight: FontWeight.bold, color: AppColors.onPrimary)),
-        icon: Icon(Icons.save, color: AppColors.onPrimary),
-      ),
+      floatingActionButton: widget.canEditTrips
+          ? FloatingActionButton.extended(
+              onPressed: _saveGroupDetails,
+              backgroundColor: AppColors.primary,
+              label: Text('Gem ændringer',
+                  style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.onPrimary)),
+              icon: Icon(Icons.save, color: AppColors.onPrimary),
+            )
+          : null,
     );
   }
 
@@ -879,23 +889,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             height: 34,
             decoration: BoxDecoration(
               color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: AppRadii.smRadius,
             ),
             child: Icon(icon, size: 17, color: AppColors.primary),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(label,
-                    style: GoogleFonts.kanit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87)),
+                    style: AppTextStyles.label()),
                 Text(subtitle,
-                    style: GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[600])),
+                    style: AppTextStyles.caption()),
               ],
             ),
           ),
@@ -912,9 +919,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Widget _buildAddChip({required VoidCallback onTap}) {
     return Material(
       color: AppColors.primary.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadii.lgRadius,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadii.lgRadius,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -922,7 +929,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.add, size: 15, color: AppColors.primary),
-              const SizedBox(width: 4),
+              const SizedBox(width: AppSpacing.xs),
               Text('Tilføj',
                   style: GoogleFonts.kanit(
                       fontSize: 12,
@@ -938,7 +945,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Widget _buildEmptyRow(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(text, style: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[500])),
+      child: Text(text, style: AppTextStyles.body(color: Colors.grey[500])),
     );
   }
 
@@ -960,13 +967,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       child: Row(
         children: [
@@ -975,7 +976,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             height: 44,
             decoration: BoxDecoration(
               color: AppColors.darkGreen.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
             ),
             child: Icon(Icons.info_outline, color: AppColors.darkGreen, size: 22),
           ),
@@ -986,8 +987,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(group.groupName ?? group.groupId,
-                    style: GoogleFonts.kanit(
-                        fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                    style: AppTextStyles.headingBold(),
                     overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 1),
                 Text(group.groupId,
@@ -999,7 +999,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: (isActive ? Colors.orange : AppColors.darkGreen).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: AppRadii.smRadius,
             ),
             child: Text(countdownText,
                 style: GoogleFonts.kanit(
@@ -1022,13 +1022,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       child: Padding(
         padding: const EdgeInsets.all(14.0),
@@ -1044,7 +1038,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: AppColors.darkGreen.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: AppRadii.smRadius,
                       ),
                       child: Icon(icon, color: AppColors.darkGreen, size: 18),
                     ),
@@ -1070,7 +1064,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
       ),
       child: ListTile(
@@ -1086,7 +1080,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         trailing: PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: Colors.black38, size: 18),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
           onSelected: (value) {
             if (value == 'edit') {
               _addOrEditPreDepartureItem(existing: item, index: index);
@@ -1127,25 +1121,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
+        contentPadding: const EdgeInsets.all(AppSpacing.md),
         leading: Container(
           width: 60,
           height: 60,
           decoration: BoxDecoration(
             color: AppColors.beige,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             child: coupon.imageURL.isNotEmpty
                 ? CachedNetworkImage(
                     imageUrl: coupon.imageURL,
@@ -1182,7 +1170,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           child: PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.black54),
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
             onSelected: (value) {
               if (value == 'edit') {
                 _addOrEditCoupon(existingCoupon: coupon);
@@ -1196,7 +1184,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.edit, size: 20, color: AppColors.darkGreen),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Text('Rediger', style: GoogleFonts.kanit()),
                   ],
                 ),
@@ -1206,7 +1194,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 child: Row(
                   children: [
                     const Icon(Icons.delete, size: 20, color: Colors.redAccent),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Text('Slet', style: GoogleFonts.kanit()),
                   ],
                 ),
@@ -1227,11 +1215,11 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       style: GoogleFonts.kanit(fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+        labelStyle: AppTextStyles.body(color: Colors.grey[600]),
         prefixIcon: Icon(icon, size: 19),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
         filled: true,
         fillColor: Colors.white,
       ),
@@ -1251,13 +1239,13 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             child: InputDecorator(
               decoration: InputDecoration(
                 labelText: 'Afrejsedato',
-                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                labelStyle: AppTextStyles.body(color: Colors.grey[600]),
                 prefixIcon: const Icon(Icons.calendar_today, size: 18),
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -1266,20 +1254,20 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppSpacing.md),
         Expanded(
           child: InkWell(
             onTap: () => _pickDate(_returnDateController, _group!.returnDate),
             child: InputDecorator(
               decoration: InputDecoration(
                 labelText: 'Hjemkomstdato',
-                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                labelStyle: AppTextStyles.body(color: Colors.grey[600]),
                 prefixIcon: const Icon(Icons.calendar_today, size: 18),
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                 filled: true,
                 fillColor: Colors.white,
               ),

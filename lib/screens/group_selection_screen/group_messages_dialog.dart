@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:backend/config/design.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -127,7 +128,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
           child: SizedBox(
             width: 520,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.xxl),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -136,13 +137,13 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                     existing == null ? 'Ny besked til gruppe' : 'Rediger besked',
                     style: GoogleFonts.kanit(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.xl),
                   if (existing == null) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: AppRadii.smRadius,
                       ),
                       child: DropdownButton<String>(
                         value: selectedGroupId,
@@ -159,12 +160,12 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                         onChanged: (val) => setInner(() => selectedGroupId = val),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                   ],
                   _buildField(titleController, 'Titel'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildField(contentController, 'Besked', maxLines: 4),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   ...attachments.map((att) => _buildAttachmentRow(
                         att,
                         onRemove: () => setInner(() => attachments.remove(att)),
@@ -192,9 +193,9 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                               });
                             },
                       icon: const Icon(Icons.attach_file, size: 16),
-                      label: Text('Tilføj filer', style: GoogleFonts.kanit(fontSize: 13)),
+                      label: Text('Tilføj filer', style: AppTextStyles.body()),
                     ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.xl),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -202,7 +203,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                         onPressed: () => Navigator.pop(ctx),
                         child: Text('Annuller', style: GoogleFonts.kanit(color: Colors.grey[600])),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       ElevatedButton(
                         onPressed: () async {
                           if (titleController.text.trim().isEmpty ||
@@ -238,7 +239,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: widget.mainColor,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         ),
                         child: Text(
@@ -278,7 +279,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
             ),
             child: Text('Slet', style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
           ),
@@ -295,7 +296,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.kanit(color: Colors.grey[600]),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        border: OutlineInputBorder(borderRadius: AppRadii.smRadius),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
     );
@@ -317,7 +318,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
         children: [
           Icon(isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file_outlined,
               size: 16, color: isPdf ? Colors.red[400] : Colors.blueGrey[400]),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: GestureDetector(
               onTap: () async {
@@ -325,7 +326,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                 if (await canLaunchUrl(uri)) await launchUrl(uri);
               },
               child: Text(name,
-                  style: GoogleFonts.kanit(fontSize: 13, color: Colors.black87),
+                  style: AppTextStyles.body(),
                   overflow: TextOverflow.ellipsis),
             ),
           ),
@@ -355,9 +356,9 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadii.lgRadius,
         child: SizedBox(
           width: 960,
           height: 640,
@@ -391,7 +392,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
           const SizedBox(width: 10),
           Text('Beskeder',
               style: GoogleFonts.kanit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           StreamBuilder<int>(
             stream: context.read<GroupInformationRepository>().streamUnreadMessageCount(_groupIds),
             builder: (context, snapshot) {
@@ -399,7 +400,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
               if (count == 0) return const SizedBox.shrink();
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: Colors.red, borderRadius: AppRadii.smRadius),
                 child: Text(
                   '$count ulæst${count == 1 ? '' : 'e'}',
                   style: GoogleFonts.kanit(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
@@ -416,11 +417,11 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
               backgroundColor: widget.mainColor,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.black54),
             onPressed: () => Navigator.of(context).pop(),
@@ -444,7 +445,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.forum_outlined, size: 48, color: Colors.grey[300]),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 Text('Ingen beskeder endnu', style: GoogleFonts.kanit(color: Colors.grey[400])),
               ],
             ),
@@ -503,7 +504,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpacing.xs),
                           Row(
                             children: [
                               Container(
@@ -544,7 +545,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                           value: 'edit',
                           child: Row(children: [
                             const Icon(Icons.edit_outlined, size: 16),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: AppSpacing.sm),
                             Text('Rediger', style: GoogleFonts.kanit()),
                           ]),
                         ),
@@ -552,7 +553,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                           value: 'delete',
                           child: Row(children: [
                             const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: AppSpacing.sm),
                             Text('Slet', style: GoogleFonts.kanit(color: Colors.red)),
                           ]),
                         ),
@@ -576,7 +577,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.chat_bubble_outline, size: 56, color: Colors.grey[200]),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             Text('Vælg en tråd for at se indholdet',
                 style: GoogleFonts.kanit(color: Colors.grey[400], fontSize: 16)),
           ],
@@ -614,7 +615,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                                 style: GoogleFonts.kanit(
                                     fontSize: 11, color: widget.mainColor, fontWeight: FontWeight.w600)),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Text(thread.authorName,
                               style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[500])),
                           if (thread.timestamp != null) ...[
@@ -631,7 +632,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, size: 18),
                             color: Colors.red[400],
@@ -644,9 +645,8 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                       ),
                       const SizedBox(height: 6),
                       Text(thread.title,
-                          style: GoogleFonts.kanit(
-                              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                      const SizedBox(height: 4),
+                          style: AppTextStyles.headingBold()),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(thread.content,
                           style: GoogleFonts.kanit(fontSize: 14, color: Colors.black54, height: 1.4)),
                       if (thread.attachments.isNotEmpty) ...[
@@ -676,7 +676,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                       );
                     }
                     return Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       child: Column(
                         children: comments.map((comment) {
                           final timeStr = comment.timestamp != null
@@ -684,10 +684,10 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                               : '';
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(AppSpacing.md),
                             decoration: BoxDecoration(
                               color: Colors.grey[50],
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: AppRadii.smRadius,
                               border: Border.all(color: Colors.grey.withOpacity(0.15)),
                             ),
                             child: Column(
@@ -708,7 +708,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                                             fontWeight: FontWeight.bold),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: AppSpacing.sm),
                                     Text(comment.authorName,
                                         style: GoogleFonts.kanit(
                                             fontSize: 13,
@@ -738,7 +738,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
         ),
         const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
               Expanded(
@@ -751,15 +751,15 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                     filled: true,
                     fillColor: Colors.grey[50],
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppRadii.smRadius,
                       borderSide: BorderSide(color: Colors.grey.withOpacity(0.2)),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppRadii.smRadius,
                       borderSide: BorderSide(color: Colors.grey.withOpacity(0.2)),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: AppRadii.smRadius,
                       borderSide: BorderSide(color: widget.mainColor, width: 1.5),
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -777,7 +777,7 @@ class _GroupMessagesDialogState extends State<GroupMessagesDialog> {
                 style: IconButton.styleFrom(
                   backgroundColor: widget.mainColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
                 ),
               ),
             ],

@@ -25,24 +25,28 @@ class AppColors {
 
 
   static const Color secondary = beige;
-  
-  // Backgrounds & Gradients
-  static const Color scaffoldGradientStart = Color(0xFFF6EFE2);
-  static const Color homeGradientStart = Color(0xFFF6EFE2);
-  static const Color scaffoldGradientEnd = Color(0xFFF6EFE2);
-  
+
+  // Backgrounds & Gradients — a clean, cool near-white instead of the
+  // previous sandy cream (0xFFF6EFE2), for a more premium/neutral feel.
+  // Deliberately not pure white: cards elsewhere are white, so the page
+  // itself needs a hair of contrast or every card would visually vanish
+  // into the background instead of reading as a distinct surface.
+  static const Color scaffoldGradientStart = Color(0xFFF7F8FA);
+  static const Color homeGradientStart = Color(0xFFF7F8FA);
+  static const Color scaffoldGradientEnd = Color(0xFFF7F8FA);
+
   // Cards & Panels
-  static const Color cardBackground = Color(0xFFF5F5F5);
-  static const Color panelBackground = Color.fromARGB(255, 232, 232, 232);
+  static const Color cardBackground = Color(0xFFFFFFFF);
+  static const Color panelBackground = Color(0xFFEEF0F2);
   static const Color chipBackground = Color(0xFFECEFF1);
-  
+
   // Navigation
   static Color navActive = const Color(0xFF37474F);
 
-  
+
   // Dialogs
-  static const Color dialogAltBackground = Color(0xFFF5F5F5);
-  static const Color uploadDialogBackground = Color(0xFFF5F5F5);
+  static const Color dialogAltBackground = Color(0xFFFFFFFF);
+  static const Color uploadDialogBackground = Color(0xFFFFFFFF);
   static const Color uploadDialogButton = Color(0xFFCFD8DC);
-  static const Color iconPickerDialog = Color(0xFFF5F5F5);
+  static const Color iconPickerDialog = Color(0xFFFFFFFF);
 }

@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -38,14 +39,14 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.8,
           maxWidth: MediaQuery.of(context).size.width * 0.6,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -54,13 +55,13 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               TextField(
                 
                 controller: _searchController,
                 decoration: InputDecoration(
                   enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           borderSide: BorderSide(color: Colors.black),
                         )
                     ,
@@ -68,7 +69,7 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                   filled: true,
                   fillColor: AppColors.chipBackground,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     borderSide: BorderSide.none,
                   ),
                   suffixIcon: IconButton(
@@ -78,7 +79,7 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                 ),
                 onSubmitted: _searchImages,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Expanded(
                 child: _loading
                     ? Center(child: CircularProgressIndicator(color: Colors.brown[400]))
@@ -107,7 +108,7 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                                   fit: StackFit.expand,
                                   children: [
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(12.0),
+                                      borderRadius: AppRadii.mdRadius,
                                       child: Image.network(imageUrl, fit: BoxFit.cover),
                                     ),
                                     Positioned( // Attribution overlay
@@ -136,7 +137,7 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                             },
                           ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text('Annuller', style: TextStyle(color: Colors.brown[800], fontSize: 16)),

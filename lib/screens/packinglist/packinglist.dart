@@ -1,4 +1,5 @@
 import 'package:backend/models/packinglist_model.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/widget/agencyLogo.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -130,7 +131,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                     height: MediaQuery.of(context).size.height *
                                         0.08,
                                     child: Padding(
-                                      padding: const EdgeInsets.all(12),
+                                      padding: const EdgeInsets.all(AppSpacing.md),
                                       child:
                                           AgencyLogo(agencyCode: agencyCode),
                                     ),
@@ -144,7 +145,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.all(8.0),
+                            padding: const EdgeInsets.all(AppSpacing.sm),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -157,7 +158,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                         color: Colors.white),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: AppSpacing.md),
                                 // Vaccine Card
                                 SizedBox(
                                   height: 110,
@@ -247,7 +248,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: AppSpacing.xs),
                                 // Grid of categories
                                 MediaQuery.removePadding(
                                   removeBottom: true,
@@ -276,7 +277,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                               color: const Color.fromARGB(
                                                   127, 239, 224, 213),
                                               borderRadius:
-                                                  BorderRadius.circular(10.0),
+                                                  AppRadii.smRadius,
                                               boxShadow: const [
                                                 BoxShadow(
                                                   color: Color(0x1A000000),
@@ -312,7 +313,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                     },
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: AppSpacing.xs),
                                 // Coupons list
                                 MediaQuery.removePadding(
                                   removeTop: true,

@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -126,19 +127,19 @@ class _LoginScreenState extends State<LoginScreen> {
       contentPadding:
           const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         borderSide: BorderSide(color: AppColors.darkGreen, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         borderSide: const BorderSide(color: Colors.redAccent, width: 1.2),
       ),
     );
@@ -189,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: AppRadii.lgRadius,
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.25),
@@ -235,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   return null;
                                 },
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: AppSpacing.lg),
                               TextFormField(
                                 controller: _passwordController,
                                 style: TextStyle(color: AppColors.darkGreen),
@@ -276,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     elevation: 0,
                                     shape: RoundedRectangleBorder(
                                       borderRadius:
-                                          BorderRadius.circular(12),
+                                          AppRadii.mdRadius,
                                     ),
                                   ),
                                   onPressed: !_isLoading

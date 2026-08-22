@@ -1,4 +1,5 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/models/message_model.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
@@ -24,8 +25,11 @@ class DashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToUsers;
   final VoidCallback onNavigateToTeam;
   final void Function(GroupInformation group) onSelectGroup;
-  final VoidCallback onCreateGroup;
-  final VoidCallback onOpenCrm;
+  // Null when the caller's role lacks the matching permission
+  // (trips.create / crm_integration.edit) — the corresponding action is
+  // then hidden/disabled rather than just left to fail server-side.
+  final VoidCallback? onCreateGroup;
+  final VoidCallback? onOpenCrm;
 
   const DashboardScreen({
     super.key,
@@ -67,7 +71,7 @@ class DashboardScreen extends StatelessWidget {
         ),
       ),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(AppSpacing.xxl),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -95,7 +99,7 @@ class DashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(flex: 3, child: tripsPreview),
-                  const SizedBox(width: 24),
+                  const SizedBox(width: AppSpacing.xxl),
                   Expanded(flex: 2, child: messagesPreview),
                 ],
               );
@@ -148,10 +152,10 @@ class DashboardScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionHeader('CRM-integration', onSeeAll: onOpenCrm),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               if (isProcessing) ...[
                 _buildCrmProcessingBanner(processingDeals.length),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
               ],
               SizedBox(
                 height: 200,
@@ -167,7 +171,7 @@ class DashboardScreen extends StatelessWidget {
                         onTap: onOpenCrm,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(
                       child: _buildStatCard(
                         'Sidste synkronisering',
@@ -182,7 +186,7 @@ class DashboardScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -191,7 +195,7 @@ class DashboardScreen extends StatelessWidget {
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: mainColor.withOpacity(0.85))),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildPreviewCard(
                     child: recentEvents.isEmpty
                         ? _buildEmptyPreview('Ingen hændelser endnu')
@@ -214,7 +218,7 @@ class DashboardScreen extends StatelessWidget {
                                           success ? Colors.green : Colors.red,
                                       size: 18,
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: AppSpacing.md),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -273,7 +277,7 @@ class DashboardScreen extends StatelessWidget {
             color: mainColor.withOpacity(0.9),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         Text(
           'Velkommen ${FirebaseAuth.instance.currentUser?.displayName ?? FirebaseAuth.instance.currentUser?.email ?? ''}',
           style: GoogleFonts.kanit(
@@ -297,21 +301,21 @@ class DashboardScreen extends StatelessWidget {
                 Icons.groups, Colors.green,
                 onTap: onNavigateToGroups),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: _buildStatCard('Kommende rejser', upcomingTrips.toString(),
                 Icons.flight_takeoff, Colors.blue,
                 onTap: onNavigateToGroups),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: _buildStatCard('Aktive rejser', activeTrips.toString(),
                 Icons.beach_access, Colors.orange,
                 onTap: onNavigateToGroups),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(child: _buildMembersCard(context)),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(child: _buildMessagesCard(context)),
         ],
       ),
@@ -337,11 +341,12 @@ class DashboardScreen extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: [
-        _buildActionButton(
-          icon: Icons.add,
-          label: 'Ny rejse',
-          onTap: onCreateGroup,
-        ),
+        if (onCreateGroup != null)
+          _buildActionButton(
+            icon: Icons.add,
+            label: 'Ny rejse',
+            onTap: onCreateGroup!,
+          ),
         _buildActionButton(
           icon: Icons.person_add_alt_1,
           label: 'Inviter medarbejder',
@@ -396,17 +401,11 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildPreviewCard({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       ),
       child: child,
     );
@@ -434,7 +433,7 @@ class DashboardScreen extends StatelessWidget {
             child: CircularProgressIndicator(
                 strokeWidth: 2.5, color: Colors.deepPurple),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               count == 1
@@ -471,7 +470,7 @@ class DashboardScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionHeader('Kommende rejser', onSeeAll: onNavigateToGroups),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         _buildPreviewCard(
           child: preview.isEmpty
               ? _buildEmptyPreview('Ingen kommende rejser')
@@ -493,7 +492,7 @@ class DashboardScreen extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: (isActive ? Colors.orange : mainColor)
                                     .withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: AppRadii.smRadius,
                               ),
                               child: Column(
                                 children: [
@@ -561,7 +560,7 @@ class DashboardScreen extends StatelessWidget {
       children: [
         _buildSectionHeader('Seneste beskeder',
             onSeeAll: () => _openMessagesDialog(context)),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.lg),
         _buildPreviewCard(
           child: StreamBuilder<List<GroupMessage>>(
             stream: context
@@ -621,7 +620,7 @@ class DashboardScreen extends StatelessWidget {
                                         fontSize: 12, color: Colors.grey[600]),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: AppSpacing.xs),
                                 Row(
                                   children: [
                                     Container(
@@ -673,25 +672,19 @@ class DashboardScreen extends StatelessWidget {
         final unread = snapshot.data ?? 0;
         return InkWell(
           onTap: () => _openMessagesDialog(context),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: AppRadii.lgRadius,
           child: Container(
             decoration: BoxDecoration(
               color: unread > 0
                   ? mainColor.withOpacity(0.1)
                   : Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: AppRadii.lgRadius,
               border: unread > 0
                   ? Border.all(color: mainColor.withOpacity(0.35), width: 1.5)
                   : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              boxShadow: AppShadows.card,
             ),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -706,7 +699,7 @@ class DashboardScreen extends StatelessWidget {
                             horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
                           color: Colors.red,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppRadii.smRadius,
                         ),
                         child: Text(
                           '$unread',
@@ -735,19 +728,13 @@ class DashboardScreen extends StatelessWidget {
       {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadii.lgRadius,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: AppRadii.lgRadius,
+          boxShadow: AppShadows.card,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,20 +789,14 @@ class DashboardScreen extends StatelessWidget {
         final count = snapshot.data ?? 0;
         return InkWell(
           onTap: onNavigateToUsers,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: AppRadii.lgRadius,
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: AppRadii.lgRadius,
+              boxShadow: AppShadows.card,
             ),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

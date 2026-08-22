@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:backend/config/design.dart';
 import 'dart:convert';
 
 import 'package:backend/config/app_colors.dart';
@@ -226,7 +227,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
       });
       final response = await http.get(
         uri,
-        headers: {'User-Agent': 'BackpackControlpanel/1.0 (kontact@backpack-app.dk)'},
+        headers: {'User-Agent': 'BackpackControlpanel/1.0 (kontakt@backpack-app.dk)'},
       );
 
       if (response.statusCode == 200) {
@@ -399,9 +400,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
       builder: (BuildContext dialogContext) {
         return Dialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xxl),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -421,8 +422,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                 const SizedBox(height: 14),
                 Text('Slet begivenhed?',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                        fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+                    style: AppTextStyles.heading()),
                 const SizedBox(height: 6),
                 Text(
                     'Er du sikker på, at du vil slette denne begivenhed? Handlingen kan ikke fortrydes.',
@@ -440,7 +440,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                 color: Colors.grey[600], fontWeight: FontWeight.w600)),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -448,7 +448,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                           foregroundColor: Colors.white,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
                         ),
                         onPressed: () => Navigator.of(dialogContext).pop(true),
                         child: Text('Slet',
@@ -509,7 +509,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
               children: [
                 Icon(offer == null ? Icons.add_circle : Icons.edit,
                     color: AppColors.darkGreen),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Text(
                   offer == null ? 'Opret Tilbud' : 'Rediger Tilbud',
                   style: GoogleFonts.kanit(
@@ -524,7 +524,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                 children: [
                   if (imageController.text.isNotEmpty) ...[
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       child: Container(
                         height: 120,
                         width: double.infinity,
@@ -547,7 +547,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                   ],
                   _buildOfferDialogField(
                     controller: nameController,
@@ -555,21 +555,18 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     hint: 'F.eks. Besøg en lokal skole',
                     icon: Icons.title,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildOfferDialogField(
                     controller: teaserController,
                     label: 'Teaser',
                     hint: 'En kort fængende tekst',
                     icon: Icons.short_text,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   Padding(
                     padding: const EdgeInsets.only(left: 4, bottom: 8),
                     child: Text('Billede',
-                        style: GoogleFonts.kanit(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Colors.black87)),
+                        style: AppTextStyles.label()),
                   ),
                   Row(
                     children: [
@@ -582,7 +579,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                           onChanged: (val) => setDialogState(() {}),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Container(
                         height: 50,
                         child: ElevatedButton(
@@ -590,7 +587,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                             backgroundColor: AppColors.navActive,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                           ),
                           onPressed: () {
                             showDialog(
@@ -608,7 +605,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _buildOfferDialogField(
                     controller: detailsController,
                     label: 'Detaljer',
@@ -630,7 +627,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.onPrimary,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadii.mdRadius),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
@@ -677,10 +674,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 4),
             child: Text(label,
-                style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: Colors.black87)),
+                style: AppTextStyles.label()),
           ),
         TextFormField(
           controller: controller,
@@ -694,15 +688,15 @@ class _TimelineDialogState extends State<TimelineDialog> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: Colors.grey[350]!),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: Colors.grey[300]!),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadii.mdRadius,
               borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
             ),
           ),
@@ -758,7 +752,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         maxWidth: MediaQuery.of(context).size.width * 0.5,
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(AppSpacing.lg),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -766,9 +760,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Beskær & Zoom',
-                                    style: GoogleFonts.kanit(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold)),
+                                    style: AppTextStyles.headingBold()),
                                 IconButton(
                                     icon: const Icon(Icons.close),
                                     onPressed: () =>
@@ -791,14 +783,13 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 10),
                                   child: Text('Zoom ud/ind herover',
-                                      style: GoogleFonts.kanit(
-                                          color: Colors.grey, fontSize: 13)),
+                                      style: AppTextStyles.body(color: Colors.grey)),
                                 ),
                                 const Icon(Icons.zoom_in,
                                     size: 20, color: Colors.grey),
                               ],
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: AppSpacing.xl),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
@@ -894,7 +885,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -902,7 +893,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
         ),
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -913,7 +904,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       height: 44,
                       decoration: BoxDecoration(
                         color: AppColors.primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadii.mdRadius,
                       ),
                       child: Icon(
                           isEditing
@@ -921,14 +912,11 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               : Icons.add_location_alt_outlined,
                           color: AppColors.primary),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Text(
                           isEditing ? 'Rediger begivenhed' : 'Ny begivenhed',
-                          style: GoogleFonts.kanit(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87)),
+                          style: AppTextStyles.heading()),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, size: 18),
@@ -938,11 +926,11 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 if (imageUrlController.text.trim().isNotEmpty)
                   ClipRRect(
                     key: ValueKey(imageUrlController.text),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     child: Stack(
                       children: [
                         CachedNetworkImage(
@@ -980,7 +968,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     height: 110,
                     decoration: BoxDecoration(
                       color: AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: Column(
@@ -994,13 +982,13 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       ],
                     ),
                   ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 _buildTextField(typeController, 'Titel', maxLength: 40),
                 _buildTextField(countryController, 'Land, By eller Område'),
                 if (_mapEnabled) _buildLocationField(),
                 _buildTextField(descriptionController, 'Beskrivelse',
                     maxLines: 3),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.lg),
                 _buildOptionalDetailField(
                   controller: accommodationController,
                   label: 'Overnatning',
@@ -1040,9 +1028,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   padding: const EdgeInsets.symmetric(vertical: 6.0),
                   child: Material(
                     color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadii.mdRadius,
                     onTap: () {
                       showModalBottomSheet(
                         context: context,
@@ -1106,7 +1094,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.image_outlined, color: AppColors.primary, size: 20),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Text(
                               imageUrlController.text.isEmpty
                                   ? 'Vælg billede'
@@ -1126,9 +1114,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     Expanded(
                       child: Material(
                         color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadii.mdRadius,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           onTap: _pickStartDate,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1153,10 +1141,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                       Text(
                                           DateFormat('dd/MM/yyyy')
                                               .format(startDate),
-                                          style: GoogleFonts.kanit(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.black87)),
+                                          style: AppTextStyles.label()),
                                     ],
                                   ),
                                 ),
@@ -1169,9 +1154,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     Expanded(
                       child: Material(
                         color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadii.mdRadius,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           onTap: _pickEndDate,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1196,10 +1181,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                       Text(
                                           DateFormat('dd/MM/yyyy')
                                               .format(endDate),
-                                          style: GoogleFonts.kanit(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.black87)),
+                                          style: AppTextStyles.label()),
                                     ],
                                   ),
                                 ),
@@ -1224,9 +1206,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               color: Colors.grey[600])),
                       Material(
                         color: AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: AppRadii.lgRadius,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: AppRadii.lgRadius,
                           onTap: () => _addOrEditOffer(),
                           child: Padding(
                             padding:
@@ -1235,7 +1217,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.add, size: 15, color: AppColors.primary),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: AppSpacing.xs),
                                 Text('Opret tilbud',
                                     style: GoogleFonts.kanit(
                                         fontSize: 12,
@@ -1249,7 +1231,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 ...offers.asMap().entries.map((entry) {
                   int idx = entry.key;
                   BureauOffer offer = entry.value;
@@ -1258,25 +1240,19 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      boxShadow: AppShadows.card,
                     ),
                     child: ListTile(
-                      contentPadding: const EdgeInsets.all(12),
+                      contentPadding: const EdgeInsets.all(AppSpacing.md),
                       leading: Container(
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
                           color: AppColors.primary.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           child: offer.imageURL.isNotEmpty
                               ? CachedNetworkImage(
                                   imageUrl: offer.imageURL,
@@ -1317,7 +1293,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                           icon: const Icon(Icons.more_vert,
                               color: Colors.black54),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius: AppRadii.mdRadius),
                           onSelected: (value) {
                             if (value == 'edit') {
                               _addOrEditOffer(offer: offer, index: idx);
@@ -1332,7 +1308,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                 children: [
                                   Icon(Icons.edit,
                                       size: 20, color: AppColors.primary),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: AppSpacing.md),
                                   Text('Rediger', style: GoogleFonts.kanit()),
                                 ],
                               ),
@@ -1343,7 +1319,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                                 children: [
                                   const Icon(Icons.delete,
                                       size: 20, color: Colors.redAccent),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: AppSpacing.md),
                                   Text('Slet', style: GoogleFonts.kanit()),
                                 ],
                               ),
@@ -1354,7 +1330,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     ),
                   );
                 }).toList(),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 Row(
                   children: [
                     if (isEditing)
@@ -1376,7 +1352,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius: AppRadii.mdRadius),
                         ),
                         onPressed: _saveChanges,
                         child: Text(
@@ -1449,7 +1425,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
           children: [
             if (extraContent != null) ...[
               extraContent,
-              const SizedBox(height: 8)
+              const SizedBox(height: AppSpacing.sm)
             ],
             TextField(
               controller: controller,
@@ -1458,20 +1434,20 @@ class _TimelineDialogState extends State<TimelineDialog> {
               style: GoogleFonts.kanit(fontSize: 14),
               decoration: InputDecoration(
                 labelText: label,
-                labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                labelStyle: AppTextStyles.body(color: Colors.grey[600]),
                 filled: true,
                 fillColor: AppColors.cardBackground,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.mdRadius,
                   borderSide: BorderSide.none,
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.mdRadius,
                   borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadii.mdRadius,
                   borderSide: BorderSide(color: AppColors.primary, width: 1.5),
                 ),
                 suffixIcon: IconButton(
@@ -1491,16 +1467,16 @@ class _TimelineDialogState extends State<TimelineDialog> {
         padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: Material(
           color: AppColors.primary.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             onTap: onToggle,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
               child: Row(
                 children: [
                   Icon(Icons.add, color: AppColors.primary, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(buttonText,
                       style: GoogleFonts.kanit(
                           color: AppColors.primary,
@@ -1527,20 +1503,20 @@ class _TimelineDialogState extends State<TimelineDialog> {
         style: GoogleFonts.kanit(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+          labelStyle: AppTextStyles.body(color: Colors.grey[600]),
           filled: true,
           fillColor: AppColors.cardBackground,
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide(color: AppColors.primary, width: 1.5),
           ),
           helperText: maxLength != null
@@ -1569,21 +1545,21 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   decoration: InputDecoration(
                     labelText: 'Adresse eller by (til kort)',
                     labelStyle:
-                        GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+                        AppTextStyles.body(color: Colors.grey[600]),
                     filled: true,
                     fillColor: AppColors.cardBackground,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 14),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       borderSide: BorderSide.none,
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       borderSide: BorderSide.none,
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                       borderSide: BorderSide(color: AppColors.primary, width: 1.5),
                     ),
                     suffixIcon: resolved
@@ -1593,7 +1569,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               SizedBox(
                 height: 50,
                 child: ElevatedButton(
@@ -1602,7 +1578,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
                     foregroundColor: AppColors.onPrimary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadii.mdRadius),
                   ),
                   onPressed: _geocoding ? null : _geocodeAddress,
                   child: _geocoding
@@ -1700,14 +1676,14 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: AppColors.panelBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.8,
           maxWidth: 600,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
             children: [
               Row(children: [
@@ -1729,7 +1705,7 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
                   ),
                 ),
               ]),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -1772,7 +1748,7 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
                                                 Icon(Icons.folder,
                                                     color: AppColors.darkGreen,
                                                     size: 20),
-                                                const SizedBox(width: 8),
+                                                const SizedBox(width: AppSpacing.sm),
                                                 Expanded(
                                                     child: Text(folder.name,
                                                         overflow: TextOverflow
@@ -1781,7 +1757,7 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
                                     }, childCount: _folders.length)),
                               if (_folders.isNotEmpty && _images.isNotEmpty)
                                 const SliverToBoxAdapter(
-                                    child: SizedBox(height: 20)),
+                                    child: SizedBox(height: AppSpacing.xl)),
                               if (_images.isNotEmpty)
                                 SliverGrid(
                                     gridDelegate:
@@ -1854,7 +1830,7 @@ class _AgencyImagePickerDialogState extends State<_AgencyImagePickerDialog> {
                                       );
                                     }, childCount: _images.length)),
                             ])),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Annuller'),

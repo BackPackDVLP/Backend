@@ -1,9 +1,10 @@
 import 'package:backend/config/app_colors.dart';
+import 'package:backend/config/design.dart';
 import 'package:backend/screens/group_selection_screen/group_selection_screen.dart';
+import 'package:backend/widget/logout.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -158,26 +159,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
         .add(LoadGroupsByAgency(agencyCode: agencyCode));
   }
 
-  Future<void> _handleLogout() async {
-    // Reset the GroupInformationBloc to its initial state
-    context.read<GroupInformationBloc>().add(LogoutEvent());
-
-    // Clear saved preferences
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('groupId');
-    await prefs.remove('lastEnteredAgencyCode');
-
-    // Sign out from Firebase
-    await FirebaseAuth.instance.signOut();
-
-    // Add a small delay to ensure the BLoC state is reset before the new screen builds.
-    await Future.delayed(const Duration(milliseconds: 50));
-
-    // Navigate to login screen and remove all previous routes
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/login');
-    }
-  }
+  Future<void> _handleLogout() => performLogout(context);
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +266,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
           padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadii.lgRadius,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.25),
@@ -310,7 +292,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
                 'Din konto har adgang til flere bureauer',
                 style: TextStyle(color: Colors.grey[600], fontSize: 13),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.xl),
               ...options.map((option) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: SizedBox(
@@ -321,7 +303,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
                           foregroundColor: AppColors.darkGreen,
                           side: BorderSide(color: AppColors.darkGreen),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadii.mdRadius,
                           ),
                         ),
                         onPressed: () => _loadAgency(option.code),
@@ -352,7 +334,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
           padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadii.lgRadius,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.25),
@@ -388,7 +370,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
                     foregroundColor: AppColors.onPrimary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadii.mdRadius,
                     ),
                   ),
                   onPressed: _handleLogout,

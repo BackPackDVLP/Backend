@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:backend/config/design.dart';
 
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/group_information_model.dart';
@@ -36,8 +37,18 @@ import '../../blocs/groupinformation/groupinformation_bloc.dart';
 class HomeScreen extends StatefulWidget {
   static const String routeName = '/home';
   final ScrollController scrollController;
+  // Whether the signed-in staff member's role grants `trips.edit`. Every
+  // existing edit/delete affordance in this screen was already gated on
+  // `emailVerified` alone — this ANDs the new permission onto that same
+  // check everywhere, rather than adding a second parallel gate that could
+  // drift out of sync with it.
+  final bool canEditTrips;
 
-  const HomeScreen({super.key, required this.scrollController});
+  const HomeScreen({
+    super.key,
+    required this.scrollController,
+    this.canEditTrips = true,
+  });
 
   static Route route() {
     return MaterialPageRoute(
@@ -323,26 +334,26 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.dialogAltBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         title: const Text('Opret ny mappe',
             style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.create_new_folder, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             const Text(
               'For at oprette en mappe skal du uploade mindst én fil til den.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               autofocus: true,
               decoration: InputDecoration(
                 labelText: 'Mappenavn',
                 border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -360,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                  borderRadius: AppRadii.mdRadius),
             ),
             onPressed: () async {
               if (folderName.trim().isNotEmpty) {
@@ -474,14 +485,8 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       ),
       child: Row(
         children: [
@@ -494,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: Icon(Icons.card_travel, color: AppColors.primary, size: 24),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -516,17 +521,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           _buildHeroChip(Icons.people_outline, '${groupInfo.members.length}'),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.sm),
           _buildHeroChip(Icons.support_agent, '${groupInfo.guides.length}'),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: (isActive ? Colors.orange : AppColors.primary)
                   .withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: AppRadii.smRadius,
             ),
             child: Text(
               countdownText,
@@ -547,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.grey.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: AppRadii.smRadius,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -566,14 +571,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// white card, soft shadow, rounded corners, icon-in-circle header.
   BoxDecoration get _panelDecoration => BoxDecoration(
         color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
       );
 
   Widget _buildPanelHeader(IconData icon, String title,
@@ -587,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
               color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: AppRadii.smRadius,
             ),
             child: Icon(icon, color: AppColors.primary, size: 18),
           ),
@@ -625,12 +624,12 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 36,
           decoration: BoxDecoration(
             color: iconColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppRadii.smRadius,
           ),
           child: Icon(icon, color: iconColor, size: 18),
         ),
         title: Text(title,
-            style: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 14),
+            style: AppTextStyles.label(),
             overflow: TextOverflow.ellipsis),
         subtitle: subtitle != null
             ? Text(subtitle,
@@ -683,7 +682,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Flexible(
                           flex: 2,
                           child: Padding(
-                            padding: const EdgeInsets.all(8.0),
+                            padding: const EdgeInsets.all(AppSpacing.sm),
                             child: _buildQuickAccessSection(context, groupInfo,
                                 expand: true),
                           ),
@@ -698,16 +697,16 @@ class _HomeScreenState extends State<HomeScreen> {
             return SafeArea(
               child: SingleChildScrollView(
                 controller: widget.scrollController,
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(AppSpacing.sm),
                 child: Column(
                   children: [
                     _buildHeroHeader(groupInfo),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     SizedBox(
                       height: 420,
                       child: _buildTimeline(context, groupInfo, sortableEvents),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
                     _buildQuickAccessSection(context, groupInfo, expand: false),
                   ],
                 ),
@@ -802,14 +801,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadii.lgRadius,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadii.lgRadius,
         onTap: onTap,
         child: Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadii.lgRadius,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.06),
@@ -826,7 +825,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Icon(icon, size: 110, color: accentColor.withOpacity(0.08)),
               ),
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(AppSpacing.xl),
                 child: Row(
                   children: [
                     Container(
@@ -838,17 +837,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Icon(icon, color: accentColor, size: 26),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(title,
-                              style: GoogleFonts.kanit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87)),
+                              style: AppTextStyles.headingBold()),
                           const SizedBox(height: 3),
                           Text(subtitle,
                               style: GoogleFonts.kanit(
@@ -859,7 +855,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(AppSpacing.sm),
                       decoration: BoxDecoration(
                         color: accentColor.withOpacity(0.1),
                         shape: BoxShape.circle,
@@ -911,7 +907,7 @@ class _HomeScreenState extends State<HomeScreen> {
             clipBehavior: Clip.none,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: AppRadii.lgRadius,
                 child: Container(
                   width: width,
                   height: height,
@@ -964,7 +960,7 @@ class _HomeScreenState extends State<HomeScreen> {
       List<dynamic> sortableEvents) {
     final user = FirebaseAuth.instance.currentUser;
     return Container(
-      margin: const EdgeInsets.all(8),
+      margin: const EdgeInsets.all(AppSpacing.sm),
       decoration: _panelDecoration,
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -974,7 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildPanelHeader(
                 Icons.timeline,
                 'Rejseforløb',
-                trailing: groupInfo.mapEnabled
+                trailing: (groupInfo.mapEnabled && widget.canEditTrips)
                     ? IconButton(
                         tooltip: 'Verificer lokationer på kort',
                         icon: Icon(Icons.map_outlined,
@@ -1021,6 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         event: item,
                         groupInformation: groupInfo,
                         repository: context.read<GroupInformationRepository>(),
+                        canEdit: widget.canEditTrips,
                       );
                       break;
                     case 'flight':
@@ -1065,7 +1062,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        if (user?.emailVerified ?? false)
+        if ((user?.emailVerified ?? false) && widget.canEditTrips)
           Positioned(
             bottom: 24,
             right: 24,
@@ -1127,7 +1124,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         final msg = messages[index];
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(AppSpacing.md),
                           decoration: BoxDecoration(
                             color: Colors.grey.withOpacity(0.05),
                             borderRadius: BorderRadius.circular(14),
@@ -1145,7 +1142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             color: Colors.black87),
                                         overflow: TextOverflow.ellipsis),
                                   ),
-                                  if (user?.emailVerified ?? false)
+                                  if ((user?.emailVerified ?? false) && widget.canEditTrips)
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -1157,7 +1154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           onPressed: () => _showEditMessageDialog(
                                               context, groupInfo, msg),
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: AppSpacing.md),
                                         IconButton(
                                           icon: const Icon(Icons.delete,
                                               size: 18, color: Colors.redAccent),
@@ -1447,7 +1444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               iconColor: AppColors.darkGreen,
                               title: folder.name,
                               onTap: () => _navigateToFolder(folder),
-                              trailing: (user?.emailVerified ?? false)
+                              trailing: ((user?.emailVerified ?? false) && widget.canEditTrips)
                                   ? Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -1461,7 +1458,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   context, folder),
                                           tooltip: 'Omdøb mappe',
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: AppSpacing.md),
                                         IconButton(
                                           icon: const Icon(Icons.delete,
                                               size: 18, color: Colors.redAccent),
@@ -1494,7 +1491,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await pdfFile.getDownloadURL();
                                 openPdf(context, downloadURL);
                               },
-                              trailing: (user?.emailVerified ?? false)
+                              trailing: ((user?.emailVerified ?? false) && widget.canEditTrips)
                                   ? IconButton(
                                       icon: const Icon(Icons.delete,
                                           size: 18, color: Colors.redAccent),
@@ -1512,7 +1509,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          if (user?.emailVerified ?? false)
+          if ((user?.emailVerified ?? false) && widget.canEditTrips)
             Positioned(
               bottom: 16,
               right: 16,
@@ -1562,7 +1559,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.dialogAltBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         title: Text('Ny besked', style: const TextStyle(fontSize: 21)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1613,7 +1610,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.dialogAltBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         title: Text('Rediger besked', style: const TextStyle(fontSize: 21)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1688,26 +1685,25 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.mdRadius,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadii.mdRadius,
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
                 Icon(icon, size: 19, color: AppColors.primary),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(label,
-                          style: GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[600])),
+                          style: AppTextStyles.caption()),
                       Text(valueText,
-                          style: GoogleFonts.kanit(
-                              fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                          style: AppTextStyles.label(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
                     ],
@@ -1897,17 +1893,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 40,
                           decoration: BoxDecoration(
                             color: AppColors.primary.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadii.mdRadius,
                           ),
                           child: Icon(Icons.mail_outline, color: AppColors.primary),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Text('Ny e-mail',
-                              style: GoogleFonts.kanit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87)),
+                              style: AppTextStyles.heading()),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, size: 20),
@@ -1915,9 +1908,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         Material(
                           color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: AppRadii.smRadius,
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: AppRadii.smRadius,
                             onTap: isSending ? null : handleSend,
                             child: Padding(
                               padding:
@@ -1984,14 +1977,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     return Dialog(
                                       backgroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(20)),
+                                          borderRadius: AppRadii.lgRadius),
                                       child: ConstrainedBox(
                                         constraints: BoxConstraints(
                                             maxWidth: 420,
                                             maxHeight:
                                                 MediaQuery.of(dialogContext).size.height * 0.7),
                                         child: Padding(
-                                          padding: const EdgeInsets.all(20),
+                                          padding: const EdgeInsets.all(AppSpacing.xl),
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2001,7 +1994,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       fontSize: 17,
                                                       fontWeight: FontWeight.w600,
                                                       color: Colors.black87)),
-                                              const SizedBox(height: 12),
+                                              const SizedBox(height: AppSpacing.md),
                                               Flexible(
                                                 child: ListView.builder(
                                                   shrinkWrap: true,
@@ -2030,7 +2023,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   },
                                                 ),
                                               ),
-                                              const SizedBox(height: 12),
+                                              const SizedBox(height: AppSpacing.md),
                                               Row(
                                                 children: [
                                                   Expanded(
@@ -2042,7 +2035,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                               fontWeight: FontWeight.w600)),
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 8),
+                                                  const SizedBox(width: AppSpacing.sm),
                                                   Expanded(
                                                     child: ElevatedButton(
                                                       style: ElevatedButton.styleFrom(
@@ -2052,7 +2045,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         padding:
                                                             const EdgeInsets.symmetric(vertical: 12),
                                                         shape: RoundedRectangleBorder(
-                                                            borderRadius: BorderRadius.circular(10)),
+                                                            borderRadius: AppRadii.smRadius),
                                                       ),
                                                       onPressed: () =>
                                                           Navigator.pop(dialogContext, tempSelected),
@@ -2095,14 +2088,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     return Dialog(
                                       backgroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(20)),
+                                          borderRadius: AppRadii.lgRadius),
                                       child: ConstrainedBox(
                                         constraints: BoxConstraints(
                                             maxWidth: 420,
                                             maxHeight:
                                                 MediaQuery.of(dialogContext).size.height * 0.7),
                                         child: Padding(
-                                          padding: const EdgeInsets.all(20),
+                                          padding: const EdgeInsets.all(AppSpacing.xl),
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2112,7 +2105,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       fontSize: 17,
                                                       fontWeight: FontWeight.w600,
                                                       color: Colors.black87)),
-                                              const SizedBox(height: 12),
+                                              const SizedBox(height: AppSpacing.md),
                                               Flexible(
                                                 child: allDocuments.isEmpty
                                                     ? Padding(
@@ -2162,7 +2155,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         },
                                                       ),
                                               ),
-                                              const SizedBox(height: 12),
+                                              const SizedBox(height: AppSpacing.md),
                                               Row(
                                                 children: [
                                                   Expanded(
@@ -2174,7 +2167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                               fontWeight: FontWeight.w600)),
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 8),
+                                                  const SizedBox(width: AppSpacing.sm),
                                                   Expanded(
                                                     child: ElevatedButton(
                                                       style: ElevatedButton.styleFrom(
@@ -2184,7 +2177,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         padding:
                                                             const EdgeInsets.symmetric(vertical: 12),
                                                         shape: RoundedRectangleBorder(
-                                                            borderRadius: BorderRadius.circular(10)),
+                                                            borderRadius: AppRadii.smRadius),
                                                       ),
                                                       onPressed: () =>
                                                           Navigator.pop(dialogContext, tempSelected),
@@ -2217,7 +2210,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           onChanged: (_) {},
                         ),
                         _buildFormSectionLabel('BESKED'),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppSpacing.xs),
                         TextField(
                           controller: bodyController,
                           maxLines: 8,
@@ -2231,15 +2224,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             fillColor: AppColors.cardBackground,
                             contentPadding: const EdgeInsets.all(14),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                               borderSide: BorderSide.none,
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                               borderSide: BorderSide.none,
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                               borderSide: BorderSide(color: AppColors.primary, width: 1.5),
                             ),
                           ),
@@ -2259,13 +2252,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               Row(
                                 children: [
                                   Icon(Icons.draw_outlined, size: 18, color: AppColors.primary),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: Text('Signatur',
-                                        style: GoogleFonts.kanit(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                            color: Colors.black87)),
+                                        style: AppTextStyles.label()),
                                   ),
                                   Switch(
                                     value: includeSignature,
@@ -2383,13 +2373,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
           return Dialog(
             backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
             child: ConstrainedBox(
               constraints:
                   BoxConstraints(maxWidth: 460, maxHeight: MediaQuery.of(context).size.height * 0.85),
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2401,15 +2391,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 44,
                             decoration: BoxDecoration(
                               color: AppColors.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                             ),
                             child: Icon(Icons.draw_outlined, color: AppColors.primary),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: Text('Rediger signatur',
-                                style: GoogleFonts.kanit(
-                                    fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87)),
+                                style: AppTextStyles.heading()),
                           ),
                           IconButton(
                             icon: const Icon(Icons.close, size: 18),
@@ -2424,12 +2413,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: GoogleFonts.kanit(fontSize: 12.5, color: Colors.grey[600])),
                       const SizedBox(height: 18),
                       _buildFormSectionLabel('BILLEDE (VALGFRI)'),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       if (imageUrl != null)
                         Stack(
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                               child: Container(
                                 color: AppColors.cardBackground,
                                 width: double.infinity,
@@ -2458,9 +2447,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       else
                         Material(
                           color: AppColors.cardBackground,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadii.mdRadius,
                             onTap: isUploading ? null : pickImage,
                             child: Container(
                               height: 90,
@@ -2475,7 +2464,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         Icon(Icons.add_photo_alternate_outlined,
                                             color: AppColors.primary),
-                                        const SizedBox(height: 4),
+                                        const SizedBox(height: AppSpacing.xs),
                                         Text('Tilføj billede',
                                             style: GoogleFonts.kanit(
                                                 fontSize: 12.5,
@@ -2497,7 +2486,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       const SizedBox(height: 14),
                       _buildFormSectionLabel('TEKST'),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       TextField(
                         controller: textController,
                         maxLines: 5,
@@ -2505,21 +2494,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: InputDecoration(
                           hintText:
                               'F.eks.\nMed venlig hilsen\nDit Rejsebureau\ntlf. 12345678',
-                          hintStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[500]),
+                          hintStyle: AppTextStyles.body(color: Colors.grey[500]),
                           filled: true,
                           fillColor: AppColors.cardBackground,
                           contentPadding: const EdgeInsets.all(14),
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              borderRadius: AppRadii.mdRadius, borderSide: BorderSide.none),
                           enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              borderRadius: AppRadii.mdRadius, borderSide: BorderSide.none),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadii.mdRadius,
                             borderSide: BorderSide(color: AppColors.primary, width: 1.5),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.xl),
                       Row(
                         children: [
                           Expanded(
@@ -2530,7 +2519,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: Colors.grey[600], fontWeight: FontWeight.w600)),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
@@ -2539,7 +2528,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 elevation: 0,
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 shape:
-                                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
                               ),
                               onPressed: () async {
                                 final text = textController.text.trim();
@@ -2586,7 +2575,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: _panelDecoration,
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             child: Text(
               "Der kan ikke tilføjes medlemmer til en skabelon",
               textAlign: TextAlign.center,
@@ -2669,7 +2658,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: groupInfo.guides[i].name,
               subtitle: _guideContactSummary(groupInfo.guides[i]),
               trailing:
-                  (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
+                  ((FirebaseAuth.instance.currentUser?.emailVerified ?? false) && widget.canEditTrips)
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -2685,7 +2674,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 index: i,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: AppSpacing.md),
                             IconButton(
                               icon: const Icon(Icons.delete,
                                   size: 18, color: Colors.redAccent),
@@ -2758,22 +2747,22 @@ class _HomeScreenState extends State<HomeScreen> {
         style: GoogleFonts.kanit(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.kanit(fontSize: 13, color: Colors.grey[600]),
+          labelStyle: AppTextStyles.body(color: Colors.grey[600]),
           prefixIcon: Icon(icon, size: 19, color: iconColor ?? Colors.grey[500]),
           filled: true,
           fillColor: AppColors.cardBackground,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadii.mdRadius,
             borderSide: BorderSide(color: AppColors.primary, width: 1.5),
           ),
         ),
@@ -2809,7 +2798,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (dialogContext) => Dialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -2827,11 +2816,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 40,
                         decoration: BoxDecoration(
                           color: AppColors.primary.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                         ),
                         child: Icon(icon, color: AppColors.primary, size: 20),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Text(
                           title,
@@ -2849,7 +2838,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 18),
                   ...fields,
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppSpacing.xs),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -2860,7 +2849,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Colors.grey[600],
                                 fontWeight: FontWeight.w600)),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
@@ -2869,7 +2858,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 20, vertical: 12),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                              borderRadius: AppRadii.smRadius),
                         ),
                         onPressed: () => onSave(dialogContext),
                         child: Text(saveLabel,
@@ -3032,7 +3021,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: groupInfo.members[i].name,
               subtitle: _memberContactSummary(groupInfo.members[i]),
               trailing:
-                  (FirebaseAuth.instance.currentUser?.emailVerified ?? false)
+                  ((FirebaseAuth.instance.currentUser?.emailVerified ?? false) && widget.canEditTrips)
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -3042,7 +3031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     size: 18, color: Color.fromARGB(255, 0, 111, 4))
                                 : const Icon(Icons.phonelink_erase,
                                     size: 18, color: Color.fromARGB(255, 255, 82, 2)),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: AppSpacing.sm),
                             IconButton(
                               icon: Icon(Icons.edit,
                                   size: 18, color: Colors.grey[600]),
@@ -3055,7 +3044,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 index: i,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: AppSpacing.md),
                             IconButton(
                               icon: const Icon(Icons.delete,
                                   size: 18, color: Colors.redAccent),
@@ -3135,7 +3124,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'Email kan ikke ændres her — den er bundet til medlemmets login.',
               style:
-                  GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[500]),
+                  AppTextStyles.caption(color: Colors.grey[500]),
             ),
           )
         else
@@ -3144,7 +3133,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'En login-konto oprettes automatisk, hvis email er udfyldt.',
               style:
-                  GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[500]),
+                  AppTextStyles.caption(color: Colors.grey[500]),
             ),
           ),
         _buildFormSectionLabel('KONTAKT (VALGFRI)'),
@@ -3276,7 +3265,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: ctx,
         builder: (itemDialogContext) => Dialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
           child: Padding(
             padding: const EdgeInsets.all(22),
             child: Column(
@@ -3293,7 +3282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.checklist_rtl,
                   onChanged: (_) {},
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Row(
                   children: [
                     Expanded(
@@ -3304,7 +3293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Colors.grey[600], fontWeight: FontWeight.w600)),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -3313,7 +3302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                              borderRadius: AppRadii.smRadius),
                         ),
                         onPressed: () {
                           if (itemController.text.trim().isNotEmpty) {
@@ -3358,7 +3347,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: ctx,
         builder: (iconDialogContext) => Dialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(iconDialogContext).size.height * 0.7,
@@ -3387,7 +3376,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   Flexible(
                     child: GridView.builder(
                       shrinkWrap: true,
@@ -3398,7 +3387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         final entry = mdiIcons.entries.elementAt(index);
                         final isSelected = entry.key == selectedIconName;
                         return InkWell(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: AppRadii.mdRadius,
                           onTap: () {
                             setState(() => selectedIconName = entry.key);
                             Navigator.pop(iconDialogContext);
@@ -3408,7 +3397,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: isSelected
                                     ? AppColors.primary
                                     : AppColors.primary.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12)),
+                                borderRadius: AppRadii.mdRadius),
                             child: Icon(entry.value,
                                 size: 30,
                                 color: isSelected ? AppColors.onPrimary : AppColors.primary),
@@ -3432,14 +3421,14 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, setState) {
             return Dialog(
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: 460,
                   maxHeight: MediaQuery.of(context).size.height * 0.85,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3451,17 +3440,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 44,
                             decoration: BoxDecoration(
                               color: AppColors.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: AppRadii.mdRadius,
                             ),
                             child: Icon(Icons.checklist, color: AppColors.primary),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: Text(isEditing ? 'Rediger kategori' : 'Ny kategori',
-                                style: GoogleFonts.kanit(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87)),
+                                style: AppTextStyles.heading()),
                           ),
                           IconButton(
                             icon: const Icon(Icons.close, size: 18),
@@ -3483,18 +3469,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                 icon: Icons.label_outline,
                                 onChanged: (_) {},
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: AppSpacing.xs),
                               _buildFormSectionLabel('IKON'),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.sm),
                               InkWell(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: AppRadii.mdRadius,
                                 onTap: () => pickIcon(setState, context),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 14, vertical: 10),
                                   decoration: BoxDecoration(
                                     color: AppColors.cardBackground,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: AppRadii.mdRadius,
                                   ),
                                   child: Row(
                                     children: [
@@ -3503,7 +3489,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         height: 38,
                                         decoration: BoxDecoration(
                                           color: AppColors.primary.withOpacity(0.14),
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: AppRadii.smRadius,
                                         ),
                                         child: Icon(
                                             MdiIcons.fromString(selectedIconName) ??
@@ -3511,7 +3497,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             color: AppColors.primary,
                                             size: 19),
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: AppSpacing.md),
                                       Text('Skift ikon',
                                           style: GoogleFonts.kanit(
                                               fontWeight: FontWeight.w600,
@@ -3522,16 +3508,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: AppSpacing.xl),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   _buildFormSectionLabel('EMNER (${items.length})'),
                                   Material(
                                     color: AppColors.primary.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: AppRadii.lgRadius,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(20),
+                                      borderRadius: AppRadii.lgRadius,
                                       onTap: () => addItem(setState, context),
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
@@ -3554,13 +3540,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.sm),
                               if (items.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   child: Text('Ingen emner endnu',
-                                      style: GoogleFonts.kanit(
-                                          fontSize: 13, color: Colors.grey[500])),
+                                      style: AppTextStyles.body(color: Colors.grey[500])),
                                 )
                               else
                                 ...items.asMap().entries.map((entry) {
@@ -3571,7 +3556,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: AppColors.cardBackground,
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: AppRadii.mdRadius,
                                     ),
                                     child: Row(
                                       children: [
@@ -3606,7 +3591,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: Colors.grey[600], fontWeight: FontWeight.w600)),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
@@ -3615,7 +3600,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 elevation: 0,
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                    borderRadius: AppRadii.smRadius),
                               ),
                               onPressed: () async {
                                 final newCategory = PackinglistCategories(
@@ -3699,7 +3684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       iconColor: AppColors.primary,
                       title: category.categoryName,
                       onTap: () => _openCategoryDialog(context, category),
-                      trailing: (user?.emailVerified ?? false)
+                      trailing: ((user?.emailVerified ?? false) && widget.canEditTrips)
                           ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -3713,7 +3698,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       groupInfo: groupInfo,
                                       category: category),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: AppSpacing.md),
                                 IconButton(
                                   icon: const Icon(Icons.delete,
                                       size: 18, color: Colors.redAccent),
@@ -3731,7 +3716,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          if (user?.emailVerified ?? false)
+          if ((user?.emailVerified ?? false) && widget.canEditTrips)
             Positioned(
               bottom: 16,
               right: 16,
@@ -3812,14 +3797,14 @@ class _HomeScreenState extends State<HomeScreen> {
             return Dialog(
               backgroundColor: AppColors.secondary,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
+                  borderRadius: AppRadii.lgRadius),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: 500,
                   maxHeight: MediaQuery.of(context).size.height * 0.8,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3828,7 +3813,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Icon(Icons.library_books,
                               color: AppColors.darkGreen, size: 28),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           Text(
                             'Vælg fra bibliotek',
                             style: GoogleFonts.kanit(
@@ -3836,13 +3821,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       Text(
                         'Vælg de pakkelister du vil tilføje til rejsen.',
                         style: GoogleFonts.kanit(
                             color: Colors.grey[600], fontSize: 14),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.xl),
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
@@ -3851,10 +3836,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             border: Border.all(color: Colors.grey.shade200),
                           ),
                           child: ListView.separated(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(AppSpacing.md),
                             itemCount: library.length,
                             separatorBuilder: (context, index) =>
-                                const SizedBox(height: 8),
+                                const SizedBox(height: AppSpacing.sm),
                             itemBuilder: (context, index) {
                               final item = library[index];
                               final isSelected =
@@ -3869,9 +3854,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     }
                                   });
                                 },
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: AppRadii.mdRadius,
                                 child: Container(
-                                  padding: const EdgeInsets.all(12),
+                                  padding: const EdgeInsets.all(AppSpacing.md),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? AppColors.primary.withOpacity(0.05)
@@ -3882,7 +3867,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           : Colors.grey.shade200,
                                       width: isSelected ? 2 : 1,
                                     ),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: AppRadii.mdRadius,
                                   ),
                                   child: Row(
                                     children: [
@@ -3905,7 +3890,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           size: 20,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
+                                      const SizedBox(width: AppSpacing.lg),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
@@ -3944,7 +3929,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.xl),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -3954,12 +3939,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 style:
                                     GoogleFonts.kanit(color: Colors.grey[700])),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: AppSpacing.md),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
+                                  borderRadius: AppRadii.mdRadius),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 24, vertical: 12),
                               elevation: 2,
@@ -4021,14 +4006,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return Dialog(
           backgroundColor: AppColors.secondary,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
           child: SizedBox(
             width: width,
             height: height,
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   child: Text(
                     category.categoryName,
                     style: const TextStyle(
@@ -4053,7 +4038,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Align(
                   alignment: Alignment.bottomRight,
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
+                    padding: const EdgeInsets.all(AppSpacing.sm),
                     child: TextButton(
                       onPressed: () => Navigator.pop(context),
                       child: const Text('Luk',

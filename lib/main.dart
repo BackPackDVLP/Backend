@@ -182,8 +182,23 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'BackPack',
           theme: ThemeData(
+            // `primarySwatch` alone doesn't drive Material 3's ColorScheme —
+            // without an explicit `colorScheme`, Flutter falls back to its
+            // own default seed (a purple, `#6750A4`), which is exactly the
+            // "purple-ish" color bleeding into every *unthemed* default
+            // widget across the app (loading spinners, default buttons,
+            // switches with no explicit activeThumbColor) regardless of a
+            // bureau's own brand color. Bureau-specific accents are already
+            // applied explicitly per-widget where it matters (buttons,
+            // Switches via activeThumbColor) — this only fixes the
+            // *fallback* for everything that isn't, so patching individual
+            // widgets one at a time (as happened before) can't miss the
+            // next unthemed spot.
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: AppColors.darkGreen,
+              brightness: Brightness.light,
+            ),
             primaryColor: Colors.transparent,
-            primarySwatch: Colors.green,
             fontFamily: 'Kanit',
             scaffoldBackgroundColor: AppColors.scaffoldGradientStart,
             checkboxTheme: CheckboxThemeData(
