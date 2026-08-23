@@ -23,7 +23,9 @@ class DashboardScreen extends StatelessWidget {
   final Color mainColor;
   final VoidCallback onNavigateToGroups;
   final VoidCallback onNavigateToUsers;
-  final VoidCallback onNavigateToTeam;
+  // Null when the caller's role lacks employees.manage — "Inviter
+  // medarbejder" is then hidden rather than left to fail server-side.
+  final VoidCallback? onNavigateToTeam;
   final void Function(GroupInformation group) onSelectGroup;
   // Null when the caller's role lacks the matching permission
   // (trips.create / crm_integration.edit) — the corresponding action is
@@ -38,7 +40,7 @@ class DashboardScreen extends StatelessWidget {
     required this.mainColor,
     required this.onNavigateToGroups,
     required this.onNavigateToUsers,
-    required this.onNavigateToTeam,
+    this.onNavigateToTeam,
     required this.onSelectGroup,
     required this.onCreateGroup,
     required this.onOpenCrm,
@@ -347,11 +349,12 @@ class DashboardScreen extends StatelessWidget {
             label: 'Ny rejse',
             onTap: onCreateGroup!,
           ),
-        _buildActionButton(
-          icon: Icons.person_add_alt_1,
-          label: 'Inviter medarbejder',
-          onTap: onNavigateToTeam,
-        ),
+        if (onNavigateToTeam != null)
+          _buildActionButton(
+            icon: Icons.person_add_alt_1,
+            label: 'Inviter medarbejder',
+            onTap: onNavigateToTeam!,
+          ),
         _buildActionButton(
           icon: Icons.forum_outlined,
           label: 'Skriv besked',

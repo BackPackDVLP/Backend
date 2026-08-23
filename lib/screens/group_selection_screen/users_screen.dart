@@ -38,6 +38,24 @@ class _UsersScreenState extends State<UsersScreen> {
   final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>>
       _groupCache = {};
 
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  _AppInstallSort _sort = _AppInstallSort.none;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<DocumentSnapshot<Map<String, dynamic>>> _getGroup(String groupId) {
     return _groupCache.putIfAbsent(
       groupId,
@@ -79,6 +97,82 @@ class _UsersScreenState extends State<UsersScreen> {
           orElse: () => null,
         );
     return member?.cast<String, dynamic>();
+  }
+
+  // Memoized on the doc-list identity (not on `_searchQuery`) — Firestore's
+  // stream only emits a new `docs` list when the data actually changes, so
+  // this only recomputes then, not on every keystroke. Typing filters the
+  // already-resolved list synchronously.
+  List<QueryDocumentSnapshot>? _cachedUserDocs;
+  Future<List<_UserSearchEntry>>? _cachedSearchEntries;
+
+  Future<List<_UserSearchEntry>> _getSearchEntries(
+      List<QueryDocumentSnapshot> userDocs) {
+    if (!identical(_cachedUserDocs, userDocs)) {
+      _cachedUserDocs = userDocs;
+      _cachedSearchEntries =
+          Future.wait(userDocs.map(_resolveSearchEntry));
+    }
+    return _cachedSearchEntries!;
+  }
+
+  bool _hasAppInstalled(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return ((data['fcmToken'] as String?) ?? '').isNotEmpty;
+  }
+
+  // Stable sort — within each install-status group, users keep whatever
+  // order Firestore/the search filter already gave them, so this doesn't
+  // fight with e.g. a future "sort by name" option added alongside it.
+  List<QueryDocumentSnapshot> _applySort(List<QueryDocumentSnapshot> docs) {
+    if (_sort == _AppInstallSort.none) return docs;
+    final sorted = List<QueryDocumentSnapshot>.of(docs);
+    final installedFirst = _sort == _AppInstallSort.installedFirst;
+    sorted.sort((a, b) {
+      final aInstalled = _hasAppInstalled(a);
+      final bInstalled = _hasAppInstalled(b);
+      if (aInstalled == bInstalled) return 0;
+      final aFirst = installedFirst ? aInstalled : !aInstalled;
+      return aFirst ? -1 : 1;
+    });
+    return sorted;
+  }
+
+  // `name`/`phoneNumber` on the `users/{uid}` doc itself are frequently
+  // blank (see the class-level comment) — the real values, and the trip
+  // names search should also match, only live on each group's member
+  // record, so those need resolving here rather than filtering the raw
+  // doc fields directly.
+  Future<_UserSearchEntry> _resolveSearchEntry(
+      QueryDocumentSnapshot doc) async {
+    final data = doc.data() as Map<String, dynamic>;
+    final email = (data['email'] as String? ?? '').toLowerCase();
+    var name = (data['name'] as String? ?? '');
+    var phone = data['phoneNumber']?.toString() ?? '';
+    final groupNames = <String>[];
+
+    final groupIds = _groupIdsForUser(data);
+    if (groupIds.isNotEmpty) {
+      final groupDocs = await Future.wait(groupIds.map(_getGroup));
+      for (final groupDoc in groupDocs) {
+        if (!groupDoc.exists) continue;
+        final groupData = groupDoc.data();
+        groupNames
+            .add((groupData?['groupName'] as String?) ?? groupDoc.id);
+        final member = _findMemberByEmail(groupDoc, email);
+        if (member != null) {
+          if (name.isEmpty) name = (member['name'] as String?) ?? '';
+          if (phone.isEmpty || phone == '0') {
+            final memberPhone = member['phoneNumber'];
+            if (memberPhone != null) phone = memberPhone.toString();
+          }
+        }
+      }
+    }
+
+    final searchableText =
+        [name, email, phone, ...groupNames].join(' ').toLowerCase();
+    return _UserSearchEntry(doc: doc, searchableText: searchableText);
   }
 
   Future<void> _openEditDialog(
@@ -848,7 +942,7 @@ class _UsersScreenState extends State<UsersScreen> {
     final success = await showEditPersonDialog(
       context,
       title: 'Tilføj bruger',
-      subtitle: 'Ny bruger hos ${widget.agencyCode} — ingen rejse påkrævet',
+      subtitle: 'Ny bruger hos ${widget.agencyCode}',
       mainColor: widget.mainColor,
       initialName: '',
       initialPhone: '',
@@ -902,8 +996,54 @@ class _UsersScreenState extends State<UsersScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Søg efter navn, email eller telefon...',
+                      prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: AppRadii.mdRadius,
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                PopupMenuButton<_AppInstallSort>(
+                  tooltip: 'Sortér',
+                  icon: Badge(
+                    isLabelVisible: _sort != _AppInstallSort.none,
+                    child: const Icon(Icons.sort),
+                  ),
+                  initialValue: _sort,
+                  onSelected: (value) => setState(() => _sort = value),
+                  itemBuilder: (context) => [
+                    CheckedPopupMenuItem(
+                      value: _AppInstallSort.none,
+                      checked: _sort == _AppInstallSort.none,
+                      child: Text('Standard', style: GoogleFonts.kanit()),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: _AppInstallSort.installedFirst,
+                      checked: _sort == _AppInstallSort.installedFirst,
+                      child: Text('App installeret først',
+                          style: GoogleFonts.kanit()),
+                    ),
+                    CheckedPopupMenuItem(
+                      value: _AppInstallSort.notInstalledFirst,
+                      checked: _sort == _AppInstallSort.notInstalledFirst,
+                      child: Text('App ikke installeret først',
+                          style: GoogleFonts.kanit()),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: AppSpacing.sm),
                 TextButton.icon(
                   onPressed: () => _openCreateDialog(context),
                   icon: const Icon(Icons.person_add_alt_1),
@@ -939,10 +1079,35 @@ class _UsersScreenState extends State<UsersScreen> {
         if (userDocs.isEmpty) {
           return _buildEmptyState('Ingen brugere fundet endnu');
         }
-        return ListView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          children:
-              userDocs.map((doc) => _buildUserCard(context, doc)).toList(),
+        final query = _searchQuery.trim().toLowerCase();
+        if (query.isEmpty) {
+          return ListView(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            children: _applySort(userDocs)
+                .map((doc) => _buildUserCard(context, doc))
+                .toList(),
+          );
+        }
+        return FutureBuilder<List<_UserSearchEntry>>(
+          future: _getSearchEntries(userDocs),
+          builder: (context, searchSnapshot) {
+            if (!searchSnapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final filteredDocs = _applySort(searchSnapshot.data!
+                .where((e) => e.searchableText.contains(query))
+                .map((e) => e.doc)
+                .toList());
+            if (filteredDocs.isEmpty) {
+              return _buildEmptyState('Ingen brugere matcher din søgning');
+            }
+            return ListView(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              children: filteredDocs
+                  .map((doc) => _buildUserCard(context, doc))
+                  .toList(),
+            );
+          },
         );
       },
     );
@@ -954,3 +1119,15 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 }
+
+/// A user doc paired with the fully-resolved (name/email/phone/trip names)
+/// lowercased text the search bar matches against — see
+/// _UsersScreenState._resolveSearchEntry.
+class _UserSearchEntry {
+  const _UserSearchEntry({required this.doc, required this.searchableText});
+
+  final QueryDocumentSnapshot doc;
+  final String searchableText;
+}
+
+enum _AppInstallSort { none, installedFirst, notInstalledFirst }

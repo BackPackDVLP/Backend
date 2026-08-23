@@ -616,8 +616,9 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             setState(() => _selectedMenuItem = SideMenuItem.groups),
         onNavigateToUsers: () =>
             setState(() => _selectedMenuItem = SideMenuItem.users),
-        onNavigateToTeam: () =>
-            setState(() => _selectedMenuItem = SideMenuItem.team),
+        onNavigateToTeam: permissions.contains('employees.manage')
+            ? () => setState(() => _selectedMenuItem = SideMenuItem.team)
+            : null,
         onSelectGroup: (group) => _selectGroup(context, group),
         onCreateGroup: permissions.contains('trips.create')
             ? () => _openAddGroupDialog(context, agencyInfo, agencyCode)
@@ -795,16 +796,16 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                           childAspectRatio: 0.8,
                         ),
                         itemCount: displayedGroups.length,
-                        itemBuilder: (context, index) =>
-                            _buildGroupCard(context, displayedGroups[index]),
+                        itemBuilder: (context, index) => _buildGroupCard(
+                            context, displayedGroups[index], appBarColor),
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.only(top: 8, bottom: 24),
                         itemCount: displayedGroups.length,
                         itemBuilder: (context, index) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          child:
-                              _buildGroupCard(context, displayedGroups[index]),
+                          child: _buildGroupCard(
+                              context, displayedGroups[index], appBarColor),
                         ),
                       ),
           ),
@@ -1085,38 +1086,41 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     );
   }
 
-  Widget _buildGroupCard(BuildContext context, GroupInformation group) {
+  Widget _buildGroupCard(
+      BuildContext context, GroupInformation group, Color themeColor) {
     final now = DateTime.now();
     final daysUntil = group.departureDate.difference(now).inDays;
     final daysLeft = group.returnDate.difference(now).inDays;
 
-    String countdownText;
-    IconData countdownIcon;
-
-    if (daysUntil > 0) {
-      countdownText = 'Afrejse om $daysUntil dage';
-      countdownIcon = Icons.flight_takeoff;
+    final String statusLabel;
+    final Color statusColor;
+    if (group.isTemplate == true) {
+      statusLabel = 'Skabelon';
+      statusColor = Colors.grey[600]!;
+    } else if (daysUntil > 0) {
+      statusLabel = 'Om $daysUntil dage';
+      statusColor = Colors.blue[700]!;
     } else if (daysLeft > 0) {
-      countdownText = 'Rejse i gang – $daysLeft dage tilbage';
-      countdownIcon = Icons.beach_access;
+      statusLabel = 'I gang · $daysLeft dage tilbage';
+      statusColor = Colors.green[700]!;
     } else {
-      countdownText = 'Rejse afsluttet';
-      countdownIcon = Icons.check_circle_outline;
+      statusLabel = 'Afsluttet';
+      statusColor = Colors.grey[600]!;
     }
 
     return InkWell(
       onTap: () => _selectGroup(context, group),
-      borderRadius: BorderRadius.circular(16),
-      child: Card(
-        elevation: 5,
-        shadowColor: Colors.black26,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.grey.withOpacity(0.5), width: 1),
+      borderRadius: AppRadii.lgRadius,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: AppRadii.lgRadius,
+          boxShadow: AppShadows.card,
+          border: Border(left: BorderSide(color: themeColor, width: 4)),
         ),
-        color: Colors.white,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min, // allow card to grow with content
@@ -1124,69 +1128,114 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: _buildGroupInfo(group)),
-                  IconButton(
-                    icon: const Icon(Icons.edit),
-                    color: Colors.black54,
-                    iconSize: 20,
-                    onPressed: () => _showEditGroupNameDialog(context, group),
-                    tooltip: 'Rediger navn',
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.groupName ?? 'Unavngivet rejse',
+                          style: AppTextStyles.headingBold(),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(group.groupId, style: AppTextStyles.caption()),
+                      ],
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    color: Colors.black54,
-                    iconSize: 20,
-                    onPressed: () => _showDuplicateDialog(context, group),
-                    tooltip: 'Dupliker rejse',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    color: Colors.red.withOpacity(0.7),
-                    iconSize: 20,
-                    onPressed: () => _showDeleteDialog(context, group),
-                    tooltip: 'Slet rejse',
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Wrap(
-                spacing: 10,
-                runSpacing: 6,
-                children: [
-                  _infoChip(Icons.people, '${group.members.length} medlemmer'),
-                  _infoChip(
-                      Icons.support_agent, '${group.guides.length} guider'),
-                  if (group.flightAway)
-                    _infoChip(Icons.flight_takeoff, 'Udrejse'),
-                  if (group.flightHome)
-                    _infoChip(Icons.flight_land, 'Hjemrejse'),
-                  if (group.emergencyPhone != null &&
-                      group.emergencyPhone!.isNotEmpty)
-                    _infoChip(Icons.phone, group.emergencyPhone!),
-                  _infoChip(Icons.place, 'Start: ${group.departureFrom}'),
-                  _infoChip(Icons.place, 'Slut: ${group.returnTo}'),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(countdownIcon, color: Colors.black54, size: 20),
-                      const SizedBox(width: 6),
-                      Text(
-                        countdownText,
-                        style: GoogleFonts.kanit(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
+                  const SizedBox(width: AppSpacing.sm),
+                  _statusBadge(statusLabel, statusColor),
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert,
+                        color: Colors.grey[600], size: 20),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'edit':
+                          _showEditGroupNameDialog(context, group);
+                          break;
+                        case 'duplicate':
+                          _showDuplicateDialog(context, group);
+                          break;
+                        case 'delete':
+                          _showDeleteDialog(context, group);
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Rediger navn'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(
+                          leading: Icon(Icons.copy_outlined),
+                          title: Text('Dupliker rejse'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline, color: Colors.red),
+                          title:
+                              Text('Slet rejse', style: TextStyle(color: Colors.red)),
+                          contentPadding: EdgeInsets.zero,
                         ),
                       ),
                     ],
                   ),
-                  const Icon(Icons.arrow_forward_ios,
-                      color: Colors.black54, size: 18),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Divider(height: 1, color: Colors.grey[200]),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _fieldTile(
+                        Icons.flight_takeoff,
+                        'Afrejse',
+                        '${DateFormat('dd. MMM yyyy', 'da_DK').format(group.departureDate)} · ${group.departureFrom}'),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: _fieldTile(
+                        Icons.flight_land,
+                        'Hjemkomst',
+                        '${DateFormat('dd. MMM yyyy', 'da_DK').format(group.returnDate)} · ${group.returnTo}'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  _statTile(Icons.people_outline, '${group.members.length}',
+                      'Medlemmer'),
+                  const SizedBox(width: AppSpacing.xl),
+                  _statTile(Icons.support_agent, '${group.guides.length}',
+                      'Guider'),
+                  const Spacer(),
+                  if (group.flightAway)
+                    Padding(
+                      padding: const EdgeInsets.only(left: AppSpacing.sm),
+                      child: Icon(Icons.flight_takeoff,
+                          size: 18, color: Colors.grey[400]),
+                    ),
+                  if (group.flightHome)
+                    Padding(
+                      padding: const EdgeInsets.only(left: AppSpacing.sm),
+                      child: Icon(Icons.flight_land,
+                          size: 18, color: Colors.grey[400]),
+                    ),
+                  const SizedBox(width: AppSpacing.md),
+                  Icon(Icons.arrow_forward_ios,
+                      color: Colors.grey[400], size: 16),
                 ],
               ),
             ],
@@ -1196,48 +1245,41 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     );
   }
 
-  Widget _buildGroupInfo(GroupInformation group) {
+  Widget _statusBadge(String label, Color color) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.kanit(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _fieldTile(IconData icon, String label, String value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          group.groupName ?? 'Unavangivet rejse',
-          style: GoogleFonts.kanit(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        Text(
-          group.groupId,
-          style: GoogleFonts.kanit(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
+        Text(label,
+            style: AppTextStyles.caption()
+                .copyWith(letterSpacing: 0.3, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 3),
         Row(
           children: [
-            const Icon(Icons.flight_takeoff, color: Colors.black54, size: 18),
-            const SizedBox(width: 6),
+            Icon(icon, size: 15, color: Colors.grey[500]),
+            const SizedBox(width: 5),
             Expanded(
               child: Text(
-                'Afrejse: ${DateFormat('dd. MMMM yyyy', 'da_DK').format(group.departureDate)}',
-                style: GoogleFonts.kanit(color: Colors.black87),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            const Icon(Icons.flight_land, color: Colors.black54, size: 18),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Hjemkomst: ${DateFormat('dd. MMMM yyyy', 'da_DK').format(group.returnDate)}',
-                style: GoogleFonts.kanit(color: Colors.black87),
+                value,
+                style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -1247,13 +1289,17 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     );
   }
 
-  Widget _infoChip(IconData icon, String label) {
-    return Chip(
-      backgroundColor: AppColors.chipBackground,
-      elevation: 0,
-      avatar: Icon(icon, size: 16, color: Colors.black87),
-      label: Text(label, style: GoogleFonts.kanit(fontSize: 14)),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+  Widget _statTile(IconData icon, String value, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[500]),
+        const SizedBox(width: 5),
+        Text(value,
+            style:
+                AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(width: 3),
+        Text(label, style: AppTextStyles.caption()),
+      ],
     );
   }
 }

@@ -1,9 +1,11 @@
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/config/design.dart';
 import 'package:backend/models/agencyInformation.dart';
+import 'package:backend/models/coupon_model.dart';
 import 'package:backend/widget/backgroundVideo.dart';
 import 'package:backend/widget/bureauLogoHeader.dart';
 import 'package:backend/widget/saved_snackbar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
@@ -161,7 +163,18 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
   bool _isUploadingLogo = false;
   bool _isUploadingVideo = false;
   bool _isLoadingInitialLogo = true;
+  // For bureaus whose primary logo is white/low-contrast — an optional
+  // second variant the traveler app uses everywhere except the Home
+  // screen's hero (see backpack/lib/widget/agencyLogo.dart).
+  String? _contrastLogoUrl;
+  bool _isUploadingContrastLogo = false;
+  bool _isLoadingInitialContrastLogo = true;
   late bool _mapEnabledDefault;
+  late bool _whatsappConfirmEnabled;
+  late bool _packingListScreenEnabled;
+  late bool _groupScreenEnabled;
+  late bool _documentsScreenEnabled;
+  late List<Coupon> _coupons;
 
   Timer? _colorDebounce;
 
@@ -169,10 +182,16 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
   void initState() {
     super.initState();
     _mapEnabledDefault = widget.agencyInfo.mapEnabledDefault;
+    _whatsappConfirmEnabled = widget.agencyInfo.whatsappConfirmEnabled;
+    _packingListScreenEnabled = widget.agencyInfo.packingListScreenEnabled;
+    _groupScreenEnabled = widget.agencyInfo.groupScreenEnabled;
+    _documentsScreenEnabled = widget.agencyInfo.documentsScreenEnabled;
+    _coupons = List.of(widget.agencyInfo.coupons);
     _colorController =
         TextEditingController(text: widget.agencyInfo.mainColor);
     _videoUrl = widget.agencyInfo.videoUrl;
     _loadInitialLogo();
+    _loadInitialContrastLogo();
   }
 
   @override
@@ -193,6 +212,20 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
       debugPrint('No initial logo found: $e');
     } finally {
       if (mounted) setState(() => _isLoadingInitialLogo = false);
+    }
+  }
+
+  Future<void> _loadInitialContrastLogo() async {
+    try {
+      final ref = FirebaseStorage.instance.ref(
+          'config/AgencyLogos/${widget.agencyInfo.agencyCode}_contrast.png');
+      final url = await ref.getDownloadURL();
+      if (mounted) setState(() => _contrastLogoUrl = url);
+    } catch (e) {
+      // This is expected if no contrast logo has been uploaded yet.
+      debugPrint('No initial contrast logo found: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingInitialContrastLogo = false);
     }
   }
 
@@ -265,6 +298,275 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     }
   }
 
+  Future<void> _saveCoupons() =>
+      _saveField({'coupons': _coupons.map((c) => c.toMap()).toList()});
+
+  void _addOrEditCoupon(Color themeColor, {Coupon? existingCoupon}) {
+    final nameController =
+        TextEditingController(text: existingCoupon?.couponName ?? '');
+    final descriptionController =
+        TextEditingController(text: existingCoupon?.description ?? '');
+    final imageUrlController =
+        TextEditingController(text: existingCoupon?.imageURL ?? '');
+    final linkController =
+        TextEditingController(text: existingCoupon?.link ?? '');
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+            title: Row(
+              children: [
+                Icon(existingCoupon == null ? Icons.add_circle : Icons.edit,
+                    color: themeColor),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  existingCoupon == null
+                      ? 'Tilføj affiliate link'
+                      : 'Rediger affiliate link',
+                  style: AppTextStyles.headingBold(),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (imageUrlController.text.isNotEmpty) ...[
+                    ClipRRect(
+                      borderRadius: AppRadii.mdRadius,
+                      child: Container(
+                        height: 120,
+                        width: double.infinity,
+                        color: Colors.white,
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrlController.text,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) => const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image,
+                                  color: Colors.grey, size: 40),
+                              Text('Ugyldig billed-URL',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
+                  _buildCouponDialogField(
+                    controller: nameController,
+                    label: 'Navn',
+                    hint: 'F.eks. 20% rabat på rejseforsikring',
+                    icon: Icons.label_outline,
+                    themeColor: themeColor,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _buildCouponDialogField(
+                    controller: descriptionController,
+                    label: 'Beskrivelse',
+                    hint: 'F.eks. Gælder alle bookinger i 2026',
+                    icon: Icons.description_outlined,
+                    maxLines: 2,
+                    themeColor: themeColor,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _buildCouponDialogField(
+                    controller: imageUrlController,
+                    label: 'Billed-URL',
+                    hint: 'Link til logo eller billede',
+                    icon: Icons.image_outlined,
+                    themeColor: themeColor,
+                    onChanged: (val) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _buildCouponDialogField(
+                    controller: linkController,
+                    label: 'Affiliate link',
+                    hint: 'Hvor skal linket føre hen?',
+                    icon: Icons.link,
+                    themeColor: themeColor,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text('Annuller',
+                    style: GoogleFonts.kanit(color: Colors.grey[600])),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: themeColor,
+                  foregroundColor: Colors.white,
+                  shape:
+                      RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 12),
+                ),
+                onPressed: () {
+                  if (nameController.text.isEmpty) return;
+
+                  final newCoupon = Coupon(
+                    couponName: nameController.text,
+                    description: descriptionController.text,
+                    imageURL: imageUrlController.text,
+                    link: linkController.text,
+                  );
+
+                  setState(() {
+                    if (existingCoupon != null) {
+                      _coupons.removeWhere(
+                          (c) => c.couponName == existingCoupon.couponName);
+                    }
+                    _coupons.add(newCoupon);
+                  });
+                  _saveCoupons();
+
+                  Navigator.pop(dialogContext);
+                },
+                child: Text(existingCoupon == null ? 'Tilføj' : 'Gem',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCouponDialogField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required Color themeColor,
+    int maxLines = 1,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: Text(label, style: AppTextStyles.label()),
+        ),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20, color: themeColor),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: AppRadii.mdRadius,
+              borderSide: BorderSide(color: Colors.grey[350]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: AppRadii.mdRadius,
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: AppRadii.mdRadius,
+              borderSide: BorderSide(color: themeColor, width: 2),
+            ),
+          ),
+          style: GoogleFonts.kanit(fontSize: 15),
+        ),
+      ],
+    );
+  }
+
+  void _deleteCoupon(Coupon coupon) {
+    setState(() {
+      _coupons.removeWhere((c) => c.couponName == coupon.couponName);
+    });
+    _saveCoupons();
+  }
+
+  Widget _buildCouponTile(Coupon coupon, Color themeColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(AppSpacing.md),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: themeColor.withValues(alpha: 0.1),
+            borderRadius: AppRadii.mdRadius,
+          ),
+          child: ClipRRect(
+            borderRadius: AppRadii.mdRadius,
+            child: coupon.imageURL.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: coupon.imageURL,
+                    fit: BoxFit.contain,
+                    errorWidget: (context, url, error) =>
+                        Icon(Icons.local_offer, color: themeColor),
+                  )
+                : Icon(Icons.local_offer, color: themeColor),
+          ),
+        ),
+        title: Text(coupon.couponName,
+            style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w600, color: Colors.black87)),
+        subtitle: Text(
+          coupon.description.isNotEmpty ? coupon.description : coupon.link,
+          style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
+          onSelected: (value) {
+            if (value == 'edit') {
+              _addOrEditCoupon(themeColor, existingCoupon: coupon);
+            } else if (value == 'delete') {
+              _deleteCoupon(coupon);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'edit',
+              child: ListTile(
+                leading: Icon(Icons.edit_outlined),
+                title: Text('Rediger'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: ListTile(
+                leading: Icon(Icons.delete_outline, color: Colors.red),
+                title: Text('Slet', style: TextStyle(color: Colors.red)),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickAndUploadLogo() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -297,6 +599,45 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
       }
     } catch (e) {
       setState(() => _isUploadingLogo = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fejl ved upload: $e')));
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadContrastLogo() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['png'],
+        withData: true,
+      );
+
+      if (result != null) {
+        setState(() => _isUploadingContrastLogo = true);
+        PlatformFile file = result.files.single;
+        String agencyCode = widget.agencyInfo.agencyCode;
+        Reference storageRef = FirebaseStorage.instance
+            .ref('config/AgencyLogos/${agencyCode}_contrast.png');
+
+        SettableMetadata metadata =
+            SettableMetadata(contentType: 'image/png');
+
+        if (file.bytes != null) {
+          UploadTask uploadTask = storageRef.putData(file.bytes!, metadata);
+          await uploadTask;
+          String downloadUrl = await storageRef.getDownloadURL();
+
+          setState(() {
+            _contrastLogoUrl = downloadUrl;
+            _isUploadingContrastLogo = false;
+          });
+          _saveField({'contrastLogoUrl': _contrastLogoUrl});
+        }
+      }
+    } catch (e) {
+      setState(() => _isUploadingContrastLogo = false);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Fejl ved upload: $e')));
@@ -415,6 +756,72 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
         const SizedBox(height: AppSpacing.lg),
         _buildSectionTitle('Kort'),
         _buildMapDefaultCard(themeColor),
+        const SizedBox(height: AppSpacing.lg),
+        _buildSectionTitle('WhatsApp'),
+        _buildWhatsappConfirmCard(themeColor),
+        const SizedBox(height: AppSpacing.lg),
+        _buildSectionTitle('Skærme i appen'),
+        _buildScreenToggleCard(
+          themeColor,
+          icon: Icons.checklist_outlined,
+          title: 'Huskeliste',
+          subtitle: 'Pakkelisten og evt. tilbud/kuponer.',
+          value: _packingListScreenEnabled,
+          onChanged: (v) {
+            setState(() => _packingListScreenEnabled = v);
+            _saveField({'packingListScreenEnabled': v});
+          },
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _buildScreenToggleCard(
+          themeColor,
+          icon: Icons.group_outlined,
+          title: 'Gruppe',
+          subtitle: 'Rejsegruppe, medlemmer og guide.',
+          value: _groupScreenEnabled,
+          onChanged: (v) {
+            setState(() => _groupScreenEnabled = v);
+            _saveField({'groupScreenEnabled': v});
+          },
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _buildScreenToggleCard(
+          themeColor,
+          icon: Icons.file_copy_outlined,
+          title: 'Dokumenter',
+          subtitle: 'Rejsedokumenter til download.',
+          value: _documentsScreenEnabled,
+          onChanged: (v) {
+            setState(() => _documentsScreenEnabled = v);
+            _saveField({'documentsScreenEnabled': v});
+          },
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Row(
+          children: [
+            Expanded(child: _buildSectionTitle('Affiliate links')),
+            TextButton.icon(
+              onPressed: () => _addOrEditCoupon(themeColor),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text('Tilføj', style: GoogleFonts.kanit()),
+            ),
+          ],
+        ),
+        if (_coupons.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: AppRadii.lgRadius,
+              boxShadow: AppShadows.card,
+            ),
+            child: Text(
+              'Ingen affiliate links endnu. Tilføjede links vises på alle bureauets rejser i appen.',
+              style: AppTextStyles.body(color: Colors.grey[600]),
+            ),
+          )
+        else
+          ..._coupons.map((c) => _buildCouponTile(c, themeColor)),
       ],
     );
   }
@@ -458,6 +865,24 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
             onAction: (_isUploadingLogo || _isLoadingInitialLogo)
                 ? null
                 : _pickAndUploadLogo,
+          ),
+          const SizedBox(height: 10),
+          _buildMediaRow(
+            themeColor: themeColor,
+            icon: Icons.contrast,
+            label: 'Kontrastlogo',
+            statusText: _isUploadingContrastLogo
+                ? 'Uploader...'
+                : _isLoadingInitialContrastLogo
+                    ? 'Indlæser...'
+                    : (_contrastLogoUrl != null
+                        ? 'Kontrastlogo uploadet'
+                        : 'Til hvidt logo — bruges alle steder undtagen forsiden'),
+            actionLabel: _contrastLogoUrl != null ? 'Skift' : 'Tilføj',
+            onAction:
+                (_isUploadingContrastLogo || _isLoadingInitialContrastLogo)
+                    ? null
+                    : _pickAndUploadContrastLogo,
           ),
           const SizedBox(height: 10),
           _buildMediaRow(
@@ -636,6 +1061,103 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
               setState(() => _mapEnabledDefault = v);
               _saveField({'mapEnabledDefault': v});
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWhatsappConfirmCard(Color themeColor) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: themeColor.withValues(alpha: 0.1),
+              borderRadius: AppRadii.mdRadius,
+            ),
+            child: Icon(Icons.chat_outlined, color: themeColor, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bekræft WhatsApp-nummer ved login',
+                    style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600, color: Colors.black87)),
+                Text(
+                    'Efter login bliver rejsende spurgt om de har WhatsApp, og skal bekræfte deres nummer, før de ser velkomstoplevelsen.',
+                    style:
+                        GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+          Switch(
+            value: _whatsappConfirmEnabled,
+            activeThumbColor: themeColor,
+            onChanged: (v) {
+              setState(() => _whatsappConfirmEnabled = v);
+              _saveField({'whatsappConfirmEnabled': v});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScreenToggleCard(
+    Color themeColor, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppRadii.lgRadius,
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: themeColor.withValues(alpha: 0.1),
+              borderRadius: AppRadii.mdRadius,
+            ),
+            child: Icon(icon, color: themeColor, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600, color: Colors.black87)),
+                Text(subtitle,
+                    style:
+                        GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: themeColor,
+            onChanged: onChanged,
           ),
         ],
       ),

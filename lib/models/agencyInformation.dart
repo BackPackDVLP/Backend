@@ -1,3 +1,4 @@
+import 'package:backend/models/coupon_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
@@ -26,6 +27,21 @@ class AgencyInformation extends Equatable {
   // still override this per group; this only seeds the value at creation.
   final bool mapEnabledDefault;
 
+  // Whether the traveler app asks new travelers for a WhatsApp-reachable
+  // phone number right after login, before the onboarding showcase.
+  final bool whatsappConfirmEnabled;
+
+  // Which of the traveler app's optional bottom-nav screens this bureau
+  // shows. Default true — a bureau that hasn't touched these keeps every
+  // screen it has today; Home itself is never optional.
+  final bool packingListScreenEnabled;
+  final bool groupScreenEnabled;
+  final bool documentsScreenEnabled;
+
+  // Bureau-wide affiliate links, shown on every trip's packing list in the
+  // traveler app (alongside any trip-specific ones a group has of its own).
+  final List<Coupon> coupons;
+
   const AgencyInformation({
     required this.agencyCode,
     required this.agencyName,
@@ -40,6 +56,11 @@ class AgencyInformation extends Equatable {
     this.emailIntegrationEnabled = false,
     this.aiTripBuilderEnabled = false,
     this.mapEnabledDefault = false,
+    this.whatsappConfirmEnabled = false,
+    this.packingListScreenEnabled = true,
+    this.groupScreenEnabled = true,
+    this.documentsScreenEnabled = true,
+    this.coupons = const [],
   });
 
   factory AgencyInformation.fromSnapshot(DocumentSnapshot snapshot) {
@@ -60,6 +81,14 @@ class AgencyInformation extends Equatable {
           data['emailIntegrationEnabled'] as bool? ?? false,
       aiTripBuilderEnabled: data['aiTripBuilderEnabled'] as bool? ?? false,
       mapEnabledDefault: data['mapEnabledDefault'] as bool? ?? false,
+      whatsappConfirmEnabled: data['whatsappConfirmEnabled'] as bool? ?? false,
+      packingListScreenEnabled:
+          data['packingListScreenEnabled'] as bool? ?? true,
+      groupScreenEnabled: data['groupScreenEnabled'] as bool? ?? true,
+      documentsScreenEnabled: data['documentsScreenEnabled'] as bool? ?? true,
+      coupons: ((data['coupons'] as List?) ?? const [])
+          .map((c) => Coupon.fromSnapshot(Map<String, dynamic>.from(c as Map)))
+          .toList(),
     );
   }
 
@@ -78,5 +107,10 @@ class AgencyInformation extends Equatable {
         emailIntegrationEnabled,
         aiTripBuilderEnabled,
         mapEnabledDefault,
+        whatsappConfirmEnabled,
+        packingListScreenEnabled,
+        groupScreenEnabled,
+        documentsScreenEnabled,
+        coupons,
       ];
 }
