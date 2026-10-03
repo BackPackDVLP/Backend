@@ -79,8 +79,7 @@ class _TeamScreenState extends State<TeamScreen> {
                       const SizedBox(height: AppSpacing.md),
                       DropdownButtonFormField<String?>(
                         initialValue: selectedRoleId,
-                        decoration:
-                            const InputDecoration(labelText: 'Rolle'),
+                        decoration: const InputDecoration(labelText: 'Rolle'),
                         hint: const Text('Ingen valgt endnu'),
                         items: [
                           const DropdownMenuItem<String?>(
@@ -322,8 +321,8 @@ class _TeamScreenState extends State<TeamScreen> {
                                     ListTileControlAffinity.leading,
                                 value: checked,
                                 activeColor: widget.mainColor,
-                                secondary:
-                                    Icon(p.icon, size: 20, color: Colors.grey[600]),
+                                secondary: Icon(p.icon,
+                                    size: 20, color: Colors.grey[600]),
                                 title: Text(p.label,
                                     style: GoogleFonts.kanit(fontSize: 13)),
                                 onChanged: (v) => setState(() {
@@ -491,10 +490,9 @@ class _TeamScreenState extends State<TeamScreen> {
               return LayoutBuilder(
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth > 900;
-                  final rolesPanel =
-                      _buildRolesPanel(rolesSnapshot, roles);
-                  final employeesPanel = _buildEmployeesPanel(
-                      adminsSnapshot, employeeDocs, roles);
+                  final rolesPanel = _buildRolesPanel(rolesSnapshot, roles);
+                  final employeesPanel =
+                      _buildEmployeesPanel(adminsSnapshot, employeeDocs, roles);
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(AppSpacing.xl),
@@ -528,11 +526,7 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget _buildPanelContainer({required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
+      decoration: _panelDecoration(widget.mainColor),
       child: child,
     );
   }
@@ -564,10 +558,8 @@ class _TeamScreenState extends State<TeamScreen> {
     );
   }
 
-  Widget _buildEmployeesPanel(
-      AsyncSnapshot<QuerySnapshot> adminsSnapshot,
-      List<QueryDocumentSnapshot> employeeDocs,
-      List<AgencyRole> roles) {
+  Widget _buildEmployeesPanel(AsyncSnapshot<QuerySnapshot> adminsSnapshot,
+      List<QueryDocumentSnapshot> employeeDocs, List<AgencyRole> roles) {
     return _buildPanelContainer(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -609,8 +601,7 @@ class _TeamScreenState extends State<TeamScreen> {
         .where((p) => role.permissions.contains(p.id))
         .toList();
     const maxChipsShown = 4;
-    final visiblePermissions =
-        matchedPermissions.take(maxChipsShown).toList();
+    final visiblePermissions = matchedPermissions.take(maxChipsShown).toList();
     final overflowCount = matchedPermissions.length - visiblePermissions.length;
 
     return Container(
@@ -626,9 +617,18 @@ class _TeamScreenState extends State<TeamScreen> {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 15,
-                backgroundColor: widget.mainColor.withValues(alpha: 0.12),
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      widget.mainColor.withValues(alpha: 0.22),
+                      widget.mainColor.withValues(alpha: 0.08),
+                    ],
+                  ),
+                ),
                 child: Icon(Icons.shield_outlined,
                     size: 15, color: widget.mainColor),
               ),
@@ -668,8 +668,7 @@ class _TeamScreenState extends State<TeamScreen> {
               runSpacing: 6,
               children: [
                 ...visiblePermissions.map((p) => _permissionChip(p.label)),
-                if (overflowCount > 0)
-                  _permissionChip('+$overflowCount mere'),
+                if (overflowCount > 0) _permissionChip('+$overflowCount mere'),
               ],
             ),
         ],
@@ -686,8 +685,7 @@ class _TeamScreenState extends State<TeamScreen> {
     final whatsapp = data['whatsappNumber'] as String? ?? '';
     final rolesMap = (data['roles'] as Map?)?.cast<String, dynamic>();
     final assignedRoleId = rolesMap?[widget.agencyCode] as String?;
-    final matchingRoles =
-        roles.where((r) => r.id == assignedRoleId).toList();
+    final matchingRoles = roles.where((r) => r.id == assignedRoleId).toList();
     final assignedRole = matchingRoles.isEmpty ? null : matchingRoles.first;
 
     final String statusLabel;
@@ -711,9 +709,18 @@ class _TeamScreenState extends State<TeamScreen> {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: widget.mainColor.withValues(alpha: 0.12),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  widget.mainColor.withValues(alpha: 0.22),
+                  widget.mainColor.withValues(alpha: 0.08),
+                ],
+              ),
+            ),
             child: Icon(
               isOwner ? Icons.star : Icons.person,
               color: widget.mainColor,
@@ -784,6 +791,37 @@ class _TeamScreenState extends State<TeamScreen> {
   }
 }
 
+// Soft gradient-tinted panel with a colored glow shadow instead of a flat
+// gray card — same look as AppScreen's _panelDecoration (app_screen.dart),
+// kept screen-local like every other copy of this in the app.
+BoxDecoration _panelDecoration(Color themeColor) {
+  return BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white,
+        Color.alphaBlend(themeColor.withValues(alpha: 0.035), Colors.white),
+      ],
+    ),
+    borderRadius: BorderRadius.circular(22),
+    border: Border.all(color: themeColor.withValues(alpha: 0.10)),
+    boxShadow: [
+      BoxShadow(
+        color: themeColor.withValues(alpha: 0.12),
+        blurRadius: 28,
+        offset: const Offset(0, 14),
+        spreadRadius: -10,
+      ),
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.03),
+        blurRadius: 6,
+        offset: const Offset(0, 2),
+      ),
+    ],
+  );
+}
+
 // `PopupMenuButton<T>` treats a `null` result from its menu as "dismissed
 // without a selection" and calls `onCanceled` instead of `onSelected` —
 // Flutter can't tell "no choice made" apart from "the chosen value happens
@@ -817,8 +855,7 @@ class _RolePickerPill extends StatelessWidget {
       tooltip: 'Tildel rolle',
       offset: const Offset(0, 40),
       shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-      onSelected: (value) =>
-          onSelected(value == _kNoRoleValue ? null : value),
+      onSelected: (value) => onSelected(value == _kNoRoleValue ? null : value),
       itemBuilder: (context) => [
         PopupMenuItem<String>(
           value: _kNoRoleValue,
@@ -826,8 +863,7 @@ class _RolePickerPill extends StatelessWidget {
             children: [
               Icon(Icons.all_inclusive,
                   size: 18,
-                  color:
-                      currentRoleId == null ? themeColor : Colors.grey[500]),
+                  color: currentRoleId == null ? themeColor : Colors.grey[500]),
               const SizedBox(width: AppSpacing.sm),
               const Text('Fuld adgang (ingen rolle)'),
             ],

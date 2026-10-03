@@ -2,7 +2,16 @@ import 'package:backend/config/app_colors.dart';
 import 'package:backend/config/design.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
+
+// Unsplash API guidelines: every attribution link must carry these UTM
+// parameters, with utm_source = the application name registered at
+// unsplash.com/developers.
+const _unsplashUtm = 'utm_source=BackPack&utm_medium=referral';
+
+String _withUnsplashUtm(String url) =>
+    '$url${url.contains('?') ? '&' : '?'}$_unsplashUtm';
 
 class UnsplashImagePicker extends StatefulWidget {
   final Function(String) onImageSelected; // returns the image URL
@@ -98,6 +107,9 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                               final image = _images[index];
                               final imageUrl = image['urls']['small'];
                               final photographerName = image['user']['name'] ?? 'Unsplash User';
+                              final photographerUrl =
+                                  image['user']?['links']?['html'] as String? ??
+                                      'https://unsplash.com';
 
                               return GestureDetector(
                                 onTap: () {
@@ -124,10 +136,9 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
                                             bottomRight: Radius.circular(12.0),
                                           ),
                                         ),
-                                        child: Text(
-                                          'Photo by $photographerName on Unsplash',
-                                          style: const TextStyle(color: Colors.white, fontSize: 10),
-                                          overflow: TextOverflow.ellipsis,
+                                        child: _UnsplashAttribution(
+                                          photographerName: photographerName,
+                                          photographerUrl: photographerUrl,
                                         ),
                                       ),
                                     )
@@ -146,6 +157,66 @@ class _UnsplashImagePickerState extends State<UnsplashImagePicker> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Photo by [name] on Unsplash", with the photographer's name linking to
+/// their Unsplash profile and "Unsplash" to unsplash.com — the attribution
+/// format Unsplash requires for production API access. The links have
+/// their own tap handlers, so clicking one opens the page instead of
+/// selecting the photo.
+class _UnsplashAttribution extends StatelessWidget {
+  const _UnsplashAttribution({
+    required this.photographerName,
+    required this.photographerUrl,
+  });
+
+  final String photographerName;
+  final String photographerUrl;
+
+  static const _style = TextStyle(color: Colors.white, fontSize: 10);
+
+  // Danish genitive: "Annie Spratt" → "Annie Spratts", but a name
+  // already ending in s/x/z just gets an apostrophe ("Hans'").
+  String get _possessive {
+    final lower = photographerName.toLowerCase();
+    return lower.endsWith('s') || lower.endsWith('x') || lower.endsWith('z')
+        ? "$photographerName'"
+        : '${photographerName}s';
+  }
+
+  Widget _link(String text, String url, {String? tooltip}) {
+    final link = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => launchUrl(Uri.parse(_withUnsplashUtm(url)),
+            mode: LaunchMode.externalApplication),
+        child: Text(
+          text,
+          style: _style.copyWith(
+            decoration: TextDecoration.underline,
+            decorationColor: Colors.white,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+    return tooltip == null ? link : Tooltip(message: tooltip, child: link);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Text('Photo by ', style: _style),
+        Flexible(
+          child: _link(photographerName, photographerUrl,
+              tooltip: 'Gå til $_possessive side på Unsplash'),
+        ),
+        const Text(' on ', style: _style),
+        _link('Unsplash', 'https://unsplash.com/'),
+      ],
     );
   }
 }

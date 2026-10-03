@@ -132,8 +132,11 @@ class _MockupLabel extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         Text('Sådan ser appen ud for jeres rejsende',
             style: GoogleFonts.kanit(
-                fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
-        Text('Farver, logo og video er live — rejseplanen herunder er eksempeldata',
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87)),
+        Text(
+            'Farver, logo og video er live — rejseplanen herunder er eksempeldata',
             textAlign: TextAlign.center,
             style: AppTextStyles.caption()),
       ],
@@ -174,6 +177,9 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
   late bool _packingListScreenEnabled;
   late bool _groupScreenEnabled;
   late bool _documentsScreenEnabled;
+  late bool _travelersCanMessage;
+  late bool _introTourEnabled;
+  late bool _marketingConsentEnabled;
   late List<Coupon> _coupons;
 
   Timer? _colorDebounce;
@@ -186,9 +192,11 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     _packingListScreenEnabled = widget.agencyInfo.packingListScreenEnabled;
     _groupScreenEnabled = widget.agencyInfo.groupScreenEnabled;
     _documentsScreenEnabled = widget.agencyInfo.documentsScreenEnabled;
+    _travelersCanMessage = widget.agencyInfo.travelersCanMessage;
+    _introTourEnabled = widget.agencyInfo.introTourEnabled;
+    _marketingConsentEnabled = widget.agencyInfo.marketingConsentEnabled;
     _coupons = List.of(widget.agencyInfo.coupons);
-    _colorController =
-        TextEditingController(text: widget.agencyInfo.mainColor);
+    _colorController = TextEditingController(text: widget.agencyInfo.mainColor);
     _videoUrl = widget.agencyInfo.videoUrl;
     _loadInitialLogo();
     _loadInitialContrastLogo();
@@ -410,8 +418,8 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
                   foregroundColor: Colors.white,
                   shape:
                       RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
                 onPressed: () {
                   if (nameController.text.isEmpty) return;
@@ -497,72 +505,75 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     _saveCoupons();
   }
 
+  // Rendered as a plain row inside the shared bordered panel (see
+  // _panelDecoration/_rowDivider in build()) — no card-per-item chrome of
+  // its own, consistent with the settings rows above it.
   Widget _buildCouponTile(Coupon coupon, Color themeColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              themeColor.withValues(alpha: 0.24),
+              themeColor.withValues(alpha: 0.08),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: coupon.imageURL.isNotEmpty
+              ? CachedNetworkImage(
+                  imageUrl: coupon.imageURL,
+                  fit: BoxFit.contain,
+                  errorWidget: (context, url, error) =>
+                      Icon(Icons.local_offer, color: themeColor),
+                )
+              : Icon(Icons.local_offer, color: themeColor),
+        ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(AppSpacing.md),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: themeColor.withValues(alpha: 0.1),
-            borderRadius: AppRadii.mdRadius,
-          ),
-          child: ClipRRect(
-            borderRadius: AppRadii.mdRadius,
-            child: coupon.imageURL.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: coupon.imageURL,
-                    fit: BoxFit.contain,
-                    errorWidget: (context, url, error) =>
-                        Icon(Icons.local_offer, color: themeColor),
-                  )
-                : Icon(Icons.local_offer, color: themeColor),
-          ),
-        ),
-        title: Text(coupon.couponName,
-            style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w600, color: Colors.black87)),
-        subtitle: Text(
-          coupon.description.isNotEmpty ? coupon.description : coupon.link,
-          style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
-          onSelected: (value) {
-            if (value == 'edit') {
-              _addOrEditCoupon(themeColor, existingCoupon: coupon);
-            } else if (value == 'delete') {
-              _deleteCoupon(coupon);
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: ListTile(
-                leading: Icon(Icons.edit_outlined),
-                title: Text('Rediger'),
-                contentPadding: EdgeInsets.zero,
-              ),
+      title: Text(coupon.couponName,
+          style: GoogleFonts.kanit(
+              fontWeight: FontWeight.w600, color: Colors.black87)),
+      subtitle: Text(
+        coupon.description.isNotEmpty ? coupon.description : coupon.link,
+        style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: PopupMenuButton<String>(
+        icon: Icon(Icons.more_vert, color: Colors.grey[600], size: 20),
+        onSelected: (value) {
+          if (value == 'edit') {
+            _addOrEditCoupon(themeColor, existingCoupon: coupon);
+          } else if (value == 'delete') {
+            _deleteCoupon(coupon);
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'edit',
+            child: ListTile(
+              leading: Icon(Icons.edit_outlined),
+              title: Text('Rediger'),
+              contentPadding: EdgeInsets.zero,
             ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: ListTile(
-                leading: Icon(Icons.delete_outline, color: Colors.red),
-                title: Text('Slet', style: TextStyle(color: Colors.red)),
-                contentPadding: EdgeInsets.zero,
-              ),
+          ),
+          const PopupMenuItem(
+            value: 'delete',
+            child: ListTile(
+              leading: Icon(Icons.delete_outline, color: Colors.red),
+              title: Text('Slet', style: TextStyle(color: Colors.red)),
+              contentPadding: EdgeInsets.zero,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -582,8 +593,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
         Reference storageRef =
             FirebaseStorage.instance.ref('config/AgencyLogos/$agencyCode.png');
 
-        SettableMetadata metadata =
-            SettableMetadata(contentType: 'image/png');
+        SettableMetadata metadata = SettableMetadata(contentType: 'image/png');
 
         if (file.bytes != null) {
           UploadTask uploadTask = storageRef.putData(file.bytes!, metadata);
@@ -621,8 +631,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
         Reference storageRef = FirebaseStorage.instance
             .ref('config/AgencyLogos/${agencyCode}_contrast.png');
 
-        SettableMetadata metadata =
-            SettableMetadata(contentType: 'image/png');
+        SettableMetadata metadata = SettableMetadata(contentType: 'image/png');
 
         if (file.bytes != null) {
           UploadTask uploadTask = storageRef.putData(file.bytes!, metadata);
@@ -725,7 +734,8 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
       try {
         if (_videoUrl != null && _videoUrl!.isNotEmpty) {
           setState(() => _isUploadingVideo = true);
-          Reference storageRef = FirebaseStorage.instance.refFromURL(_videoUrl!);
+          Reference storageRef =
+              FirebaseStorage.instance.refFromURL(_videoUrl!);
           await storageRef.delete();
         }
 
@@ -752,87 +762,251 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildHeader(themeColor),
+        const SizedBox(height: AppSpacing.xxl),
+        _buildSectionTitle('Branding', Icons.auto_awesome_outlined, themeColor),
         _buildBrandingCard(themeColor),
-        const SizedBox(height: AppSpacing.lg),
-        _buildSectionTitle('Kort'),
-        _buildMapDefaultCard(themeColor),
-        const SizedBox(height: AppSpacing.lg),
-        _buildSectionTitle('WhatsApp'),
-        _buildWhatsappConfirmCard(themeColor),
-        const SizedBox(height: AppSpacing.lg),
-        _buildSectionTitle('Skærme i appen'),
-        _buildScreenToggleCard(
-          themeColor,
-          icon: Icons.checklist_outlined,
-          title: 'Huskeliste',
-          subtitle: 'Pakkelisten og evt. tilbud/kuponer.',
-          value: _packingListScreenEnabled,
-          onChanged: (v) {
-            setState(() => _packingListScreenEnabled = v);
-            _saveField({'packingListScreenEnabled': v});
-          },
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _buildScreenToggleCard(
-          themeColor,
-          icon: Icons.group_outlined,
-          title: 'Gruppe',
-          subtitle: 'Rejsegruppe, medlemmer og guide.',
-          value: _groupScreenEnabled,
-          onChanged: (v) {
-            setState(() => _groupScreenEnabled = v);
-            _saveField({'groupScreenEnabled': v});
-          },
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _buildScreenToggleCard(
-          themeColor,
-          icon: Icons.file_copy_outlined,
-          title: 'Dokumenter',
-          subtitle: 'Rejsedokumenter til download.',
-          value: _documentsScreenEnabled,
-          onChanged: (v) {
-            setState(() => _documentsScreenEnabled = v);
-            _saveField({'documentsScreenEnabled': v});
-          },
-        ),
-        const SizedBox(height: AppSpacing.lg),
+        const SizedBox(height: AppSpacing.xxl),
+        _buildSectionTitle('Indstillinger', Icons.tune_rounded, themeColor),
+        _buildSettingsCard(themeColor),
+        const SizedBox(height: AppSpacing.xxl),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Expanded(child: _buildSectionTitle('Affiliate links')),
-            TextButton.icon(
-              onPressed: () => _addOrEditCoupon(themeColor),
-              icon: const Icon(Icons.add, size: 18),
-              label: Text('Tilføj', style: GoogleFonts.kanit()),
-            ),
+            Expanded(
+                child: _buildSectionTitle(
+                    'Affiliate links', Icons.local_offer_outlined, themeColor)),
+            _buildAddCouponButton(themeColor),
           ],
         ),
+        const SizedBox(height: AppSpacing.md),
         if (_coupons.isEmpty)
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: AppRadii.lgRadius,
-              boxShadow: AppShadows.card,
-            ),
+            decoration: _panelDecoration(themeColor),
             child: Text(
               'Ingen affiliate links endnu. Tilføjede links vises på alle bureauets rejser i appen.',
               style: AppTextStyles.body(color: Colors.grey[600]),
             ),
           )
         else
-          ..._coupons.map((c) => _buildCouponTile(c, themeColor)),
+          Container(
+            decoration: _panelDecoration(themeColor),
+            child: Column(
+              children: [
+                for (var i = 0; i < _coupons.length; i++) ...[
+                  _buildCouponTile(_coupons[i], themeColor),
+                  if (i != _coupons.length - 1) _rowDivider(themeColor),
+                ],
+              ],
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  // A bold gradient identity header for the editor — an immediate visual
+  // "this is your bureau's control panel," in the bureau's own brand color,
+  // rather than opening straight into a plain settings list.
+  Widget _buildHeader(Color themeColor) {
+    final name = widget.agencyInfo.agencyName;
+    final darker = Color.lerp(themeColor, Colors.black, 0.28)!;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [themeColor, darker],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: themeColor.withValues(alpha: 0.35),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+            spreadRadius: -10,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text('APP-KONFIGURATION',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                  color: Colors.white.withValues(alpha: 0.75))),
+          const SizedBox(height: 12),
+          // The logo already carries the bureau's name — no separate name
+          // text alongside it, that would just repeat what the logo says.
+          // Falls back to the plain name only when there's no logo yet.
+          SizedBox(
+            height: 56,
+            child: Align(
+              alignment: Alignment.center,
+              child: _logoUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: _logoUrl!,
+                      height: 56,
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      placeholder: (context, url) => _headerNameFallback(name),
+                      errorWidget: (context, url, error) =>
+                          _headerNameFallback(name),
+                    )
+                  : _headerNameFallback(name),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text('Ændringer herunder er live for jeres rejsende med det samme.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                  fontSize: 12.5, color: Colors.white.withValues(alpha: 0.85))),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerNameFallback(String name) {
+    return Text(name.isNotEmpty ? name : 'Jeres bureau',
+        style: GoogleFonts.kanit(
+            fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white));
+  }
+
+  // Soft gradient-tinted panel with a colored glow shadow instead of a flat
+  // gray card — every panel takes on the bureau's own brand color at a low
+  // alpha, so the whole editor visually belongs to this one bureau.
+  BoxDecoration _panelDecoration(Color themeColor) {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white,
+          Color.alphaBlend(themeColor.withValues(alpha: 0.035), Colors.white),
+        ],
+      ),
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: themeColor.withValues(alpha: 0.10)),
+      boxShadow: [
+        BoxShadow(
+          color: themeColor.withValues(alpha: 0.12),
+          blurRadius: 28,
+          offset: const Offset(0, 14),
+          spreadRadius: -10,
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    );
+  }
+
+  Widget _rowDivider(Color themeColor) => Divider(
+      height: 1, thickness: 1, color: themeColor.withValues(alpha: 0.08));
+
+  // A pill badge (icon + label) instead of plain caps text — echoes the
+  // "EKSEMPEL-VISNING" pill on the preview side, so the two halves of this
+  // screen read as one designed system rather than two different UIs stuck
+  // together.
+  Widget _buildSectionTitle(String title, IconData icon, Color themeColor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4, top: 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(title,
-            style: AppTextStyles.heading()),
+      padding: const EdgeInsets.only(bottom: 14, left: 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              themeColor.withValues(alpha: 0.16),
+              themeColor.withValues(alpha: 0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: themeColor),
+            const SizedBox(width: 6),
+            Text(title.toUpperCase(),
+                style: GoogleFonts.kanit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: themeColor)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddCouponButton(Color themeColor) {
+    final darker = Color.lerp(themeColor, Colors.black, 0.15)!;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => _addOrEditCoupon(themeColor),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [themeColor, darker]),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                  color: themeColor.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5)),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.add, size: 15, color: Colors.white),
+              const SizedBox(width: 6),
+              Text('Tilføj',
+                  style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // A soft pill button for a media row's action ("Tilføj"/"Skift") — a
+  // tinted-fill pill instead of a bare TextButton, disabled state rendered
+  // in flat gray so it reads as unavailable rather than just dimmer.
+  Widget _pillActionButton(
+      String label, Color themeColor, VoidCallback? onTap) {
+    final disabled = onTap == null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: disabled
+                ? Colors.grey[200]
+                : themeColor.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(label,
+              style: GoogleFonts.kanit(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: disabled ? Colors.grey[500] : themeColor)),
+        ),
       ),
     );
   }
@@ -844,11 +1018,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
   Widget _buildBrandingCard(Color themeColor) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
+      decoration: _panelDecoration(themeColor),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -894,8 +1064,9 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
                 : ((_videoUrl != null && _videoUrl!.isNotEmpty)
                     ? 'Brugerdefineret video'
                     : 'Standardvideo'),
-            actionLabel:
-                (_videoUrl != null && _videoUrl!.isNotEmpty) ? 'Skift' : 'Tilføj',
+            actionLabel: (_videoUrl != null && _videoUrl!.isNotEmpty)
+                ? 'Skift'
+                : 'Tilføj',
             onAction: _isUploadingVideo ? null : _pickAndUploadVideo,
             onDelete: (_videoUrl != null &&
                     _videoUrl!.isNotEmpty &&
@@ -905,22 +1076,34 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: AppRadii.mdRadius,
+              gradient: LinearGradient(
+                colors: [
+                  themeColor.withValues(alpha: 0.10),
+                  themeColor.withValues(alpha: 0.02),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: themeColor.withValues(alpha: 0.15)),
             ),
             child: Row(
               children: [
                 GestureDetector(
                   onTap: _showColorPicker,
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: _getColorFromHex(_colorController.text),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey[300]!),
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                            color: themeColor.withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4)),
+                      ],
                     ),
                   ),
                 ),
@@ -929,24 +1112,25 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
                   child: TextField(
                     controller: _colorController,
                     decoration: InputDecoration(
-                      labelText: 'Primær farve',
-                      labelStyle:
-                          GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
+                      labelText: 'Primær brandfarve',
+                      labelStyle: GoogleFonts.kanit(
+                          fontSize: 12, color: Colors.grey[600]),
                       border: InputBorder.none,
                       isDense: true,
                     ),
-                    style: GoogleFonts.kanit(fontSize: 14),
+                    style: GoogleFonts.kanit(
+                        fontSize: 14, fontWeight: FontWeight.w600),
                     onChanged: (value) {
                       setState(() {});
                       _colorDebounce?.cancel();
-                      _colorDebounce = Timer(
-                          const Duration(milliseconds: 700),
+                      _colorDebounce = Timer(const Duration(milliseconds: 700),
                           () => _saveField({'mainColor': value}));
                     },
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.palette, color: Colors.grey, size: 20),
+                  icon:
+                      Icon(Icons.palette_outlined, color: themeColor, size: 20),
                   onPressed: _showColorPicker,
                 ),
               ],
@@ -970,20 +1154,26 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     VoidCallback? onDelete,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: AppRadii.mdRadius,
-        border: Border.all(color: Colors.grey[200]!),
+        color:
+            Color.alphaBlend(themeColor.withValues(alpha: 0.035), Colors.white),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: themeColor.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: themeColor.withValues(alpha: 0.1),
-              borderRadius: AppRadii.smRadius,
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  themeColor.withValues(alpha: 0.22),
+                  themeColor.withValues(alpha: 0.08),
+                ],
+              ),
             ),
             child: Icon(icon, color: themeColor, size: 18),
           ),
@@ -992,174 +1182,285 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w600, color: Colors.black87)),
-                Text(statusText,
-                    style:
-                        AppTextStyles.caption()),
+                Text(label, style: AppTextStyles.label()),
+                Text(statusText, style: AppTextStyles.caption()),
               ],
             ),
           ),
           if (onDelete != null) ...[
             IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+              icon:
+                  const Icon(Icons.delete_outline, color: Colors.red, size: 19),
               onPressed: onDelete,
               tooltip: 'Slet baggrundsvideo',
             ),
             const SizedBox(width: AppSpacing.xs),
           ],
-          TextButton(
-            onPressed: onAction,
-            child: Text(actionLabel,
-                style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w600, color: themeColor)),
-          ),
+          _pillActionButton(actionLabel, themeColor, onAction),
         ],
       ),
     );
   }
 
-  Widget _buildMapDefaultCard(Color themeColor) {
+  // One bordered panel holding every bureau-wide behavior toggle as list
+  // rows with dividers, rather than a separate floating card per switch —
+  // reads as a single settings list instead of six bouncing tiles.
+  Widget _buildSettingsCard(Color themeColor) {
+    final rows = <Widget>[
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.map_outlined,
+        title: 'Kort som standard',
+        subtitle:
+            'Nye rejser får kortet slået til fra start. Kan altid ændres for en enkelt rejse under dens egne detaljer.',
+        value: _mapEnabledDefault,
+        onChanged: (v) {
+          setState(() => _mapEnabledDefault = v);
+          _saveField({'mapEnabledDefault': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.chat_outlined,
+        title: 'Spørg om WhatsApp-nummer ved login',
+        subtitle:
+            'Efter login bliver rejsende spurgt om de har WhatsApp, og skal bekræfte deres nummer, før de ser velkomstoplevelsen.',
+        value: _whatsappConfirmEnabled,
+        onChanged: (v) {
+          setState(() => _whatsappConfirmEnabled = v);
+          _saveField({'whatsappConfirmEnabled': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.explore_outlined,
+        title: 'Velkomstoplevelse (rundvisning)',
+        subtitle:
+            'Førstegangsrejsende får en guidet rundvisning af appen efter login. Slået fra springer direkte til forsiden.',
+        value: _introTourEnabled,
+        onChanged: (v) {
+          setState(() => _introTourEnabled = v);
+          _saveField({'introTourEnabled': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.mark_email_read_outlined,
+        title: 'Spørg om email markedsføring',
+        subtitle:
+            'Rejsende, der ikke har svaret endnu, bliver spurgt om de vil modtage tilbud og nyheder på email. Svarer de ikke, eller er dette slået fra, tælles de som "nej".',
+        value: _marketingConsentEnabled,
+        onChanged: (v) {
+          setState(() => _marketingConsentEnabled = v);
+          _saveField({'marketingConsentEnabled': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.forum_outlined,
+        title: 'Rejsende kan skrive og svare',
+        subtitle: _travelersCanMessage
+            ? 'Rejsende kan oprette nye beskeder og svare på jeres beskeder.'
+            : 'Kun bureauet kan sende beskeder — rejsende kan læse, men ikke skrive eller svare.',
+        value: _travelersCanMessage,
+        onChanged: (v) {
+          setState(() => _travelersCanMessage = v);
+          _saveField({'travelersCanMessage': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.checklist_outlined,
+        title: 'Huskeliste',
+        subtitle: 'Pakkelisten og evt. tilbud/kuponer.',
+        value: _packingListScreenEnabled,
+        onChanged: (v) {
+          setState(() => _packingListScreenEnabled = v);
+          _saveField({'packingListScreenEnabled': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.group_outlined,
+        title: 'Gruppe',
+        subtitle: 'Rejsegruppe, medlemmer og guide.',
+        value: _groupScreenEnabled,
+        onChanged: (v) {
+          setState(() => _groupScreenEnabled = v);
+          _saveField({'groupScreenEnabled': v});
+        },
+      ),
+      _buildToggleRow(
+        themeColor: themeColor,
+        icon: Icons.file_copy_outlined,
+        title: 'Dokumenter',
+        subtitle: 'Rejsedokumenter til download.',
+        value: _documentsScreenEnabled,
+        onChanged: (v) {
+          setState(() => _documentsScreenEnabled = v);
+          _saveField({'documentsScreenEnabled': v});
+        },
+      ),
+    ];
+
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
-      child: Row(
+      decoration: _panelDecoration(themeColor),
+      child: Column(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: themeColor.withValues(alpha: 0.1),
-              borderRadius: AppRadii.mdRadius,
-            ),
-            child: Icon(Icons.map_outlined, color: themeColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Kort som standard',
-                    style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w600, color: Colors.black87)),
-                Text(
-                    'Nye rejser får kortet slået til fra start. Kan altid ændres for en enkelt rejse under dens egne detaljer.',
-                    style:
-                        GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
-              ],
-            ),
-          ),
-          Switch(
-            value: _mapEnabledDefault,
-            activeThumbColor: themeColor,
-            onChanged: (v) {
-              setState(() => _mapEnabledDefault = v);
-              _saveField({'mapEnabledDefault': v});
-            },
-          ),
+          for (var i = 0; i < rows.length; i++) ...[
+            rows[i],
+            if (i != rows.length - 1) _rowDivider(themeColor),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildWhatsappConfirmCard(Color themeColor) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: themeColor.withValues(alpha: 0.1),
-              borderRadius: AppRadii.mdRadius,
-            ),
-            child: Icon(Icons.chat_outlined, color: themeColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Bekræft WhatsApp-nummer ved login',
-                    style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w600, color: Colors.black87)),
-                Text(
-                    'Efter login bliver rejsende spurgt om de har WhatsApp, og skal bekræfte deres nummer, før de ser velkomstoplevelsen.',
-                    style:
-                        GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
-              ],
-            ),
-          ),
-          Switch(
-            value: _whatsappConfirmEnabled,
-            activeThumbColor: themeColor,
-            onChanged: (v) {
-              setState(() => _whatsappConfirmEnabled = v);
-              _saveField({'whatsappConfirmEnabled': v});
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScreenToggleCard(
-    Color themeColor, {
+  // A single settings-list row: a soft gradient icon badge tinted with the
+  // bureau's own brand color, title/subtitle, and a hand-built glow switch
+  // — hoverable, so the row itself reacts before you even reach the switch.
+  Widget _buildToggleRow({
+    required Color themeColor,
     required IconData icon,
     required String title,
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: themeColor.withValues(alpha: 0.1),
-              borderRadius: AppRadii.mdRadius,
+    return _HoverableRow(
+      themeColor: themeColor,
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    themeColor.withValues(alpha: value ? 0.24 : 0.10),
+                    themeColor.withValues(alpha: value ? 0.10 : 0.03),
+                  ],
+                ),
+              ),
+              child: Icon(icon, color: themeColor, size: 19),
             ),
-            child: Icon(icon, color: themeColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: GoogleFonts.kanit(
-                        fontWeight: FontWeight.w600, color: Colors.black87)),
-                Text(subtitle,
-                    style:
-                        GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600])),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.label()),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: AppTextStyles.caption()),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            _GlowSwitch(
+              value: value,
+              color: themeColor,
+              onChanged: onChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Subtle brand-tinted hover highlight for a settings row — only visible on
+// web/desktop pointer input; a no-op tap target everywhere else.
+class _HoverableRow extends StatefulWidget {
+  const _HoverableRow({required this.child, required this.themeColor});
+
+  final Widget child;
+  final Color themeColor;
+
+  @override
+  State<_HoverableRow> createState() => _HoverableRowState();
+}
+
+class _HoverableRowState extends State<_HoverableRow> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        color: _hovering
+            ? widget.themeColor.withValues(alpha: 0.035)
+            : Colors.transparent,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// A hand-built pill toggle (not the stock Material Switch) — a colored glow
+// halo appears behind the track when ON, and the thumb slides with a short
+// animation, for a more deliberately "designed" feel on this one screen.
+class _GlowSwitch extends StatelessWidget {
+  const _GlowSwitch({
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Color color;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final darker = Color.lerp(color, Colors.black, 0.15)!;
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        width: 46,
+        height: 27,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: value ? null : Colors.grey[300],
+          gradient: value ? LinearGradient(colors: [color, darker]) : null,
+          boxShadow: value
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.45),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : const [],
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 21,
+            height: 21,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
               ],
             ),
           ),
-          Switch(
-            value: value,
-            activeThumbColor: themeColor,
-            onChanged: onChanged,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1256,10 +1557,8 @@ class _PhoneMockup extends StatelessWidget {
                               ),
                             ),
                             Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 8, 16, 76),
-                              child:
-                                  _ItinerarySection(themeColor: themeColor),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 76),
+                              child: _ItinerarySection(themeColor: themeColor),
                             ),
                           ],
                         ),
@@ -1699,7 +1998,8 @@ class _ItineraryDayRow extends StatelessWidget {
                         loadingBuilder: (context, child, progress) =>
                             progress == null
                                 ? child
-                                : Container(color: themeColor.withValues(alpha: 0.3)),
+                                : Container(
+                                    color: themeColor.withValues(alpha: 0.3)),
                         errorBuilder: (context, error, stackTrace) => Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -1798,10 +2098,26 @@ class _MockBottomNavBar extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _NavBarItem(icon: Icons.home, label: 'Hjem', color: themeColor, active: true),
-              _NavBarItem(icon: Icons.summarize, label: 'Huskeliste', color: themeColor, active: false),
-              _NavBarItem(icon: Icons.group, label: 'Gruppe', color: themeColor, active: false),
-              _NavBarItem(icon: Icons.file_copy, label: 'Dokumenter', color: themeColor, active: false),
+              _NavBarItem(
+                  icon: Icons.home,
+                  label: 'Hjem',
+                  color: themeColor,
+                  active: true),
+              _NavBarItem(
+                  icon: Icons.summarize,
+                  label: 'Huskeliste',
+                  color: themeColor,
+                  active: false),
+              _NavBarItem(
+                  icon: Icons.group,
+                  label: 'Gruppe',
+                  color: themeColor,
+                  active: false),
+              _NavBarItem(
+                  icon: Icons.file_copy,
+                  label: 'Dokumenter',
+                  color: themeColor,
+                  active: false),
             ],
           ),
         ),

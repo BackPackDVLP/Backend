@@ -373,101 +373,101 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       child: AgencyPermissionsResolver(
         agencyCode: agencyCode,
         builder: (context, permissions) => StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('agency')
-            .doc(agencyCode)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Scaffold(
-                body: Center(child: CircularProgressIndicator()));
-          }
-          final agencyInfo = AgencyInformation.fromSnapshot(snapshot.data!);
-          final data = snapshot.data!.data() as Map<String, dynamic>;
-          final appBarColor = AppColors.fromHex(agencyInfo.mainColor);
+          stream: FirebaseFirestore.instance
+              .collection('agency')
+              .doc(agencyCode)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()));
+            }
+            final agencyInfo = AgencyInformation.fromSnapshot(snapshot.data!);
+            final data = snapshot.data!.data() as Map<String, dynamic>;
+            final appBarColor = AppColors.fromHex(agencyInfo.mainColor);
 
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              // Desktop: Grid layout, Mobile: List layout
-              final isDesktop = constraints.maxWidth > 800;
-              return Scaffold(
-                drawer: isDesktop
-                    ? null
-                    : _buildSideMenu(appBarColor, agencyInfo, permissions),
-                appBar: AppBar(
-                  automaticallyImplyLeading: !isDesktop,
-                  centerTitle: true,
-                  toolbarHeight: 50,
-                  title: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(0.5),
-                        child: BureauLogoHeader(
-                          agencyCode: agencyCode,
-                          fallbackText: agencyInfo.agencyName,
-                          height: 40,
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                // Desktop: Grid layout, Mobile: List layout
+                final isDesktop = constraints.maxWidth > 800;
+                return Scaffold(
+                  drawer: isDesktop
+                      ? null
+                      : _buildSideMenu(appBarColor, agencyInfo, permissions),
+                  appBar: AppBar(
+                    automaticallyImplyLeading: !isDesktop,
+                    centerTitle: true,
+                    toolbarHeight: 50,
+                    title: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(0.5),
+                          child: BureauLogoHeader(
+                            agencyCode: agencyCode,
+                            fallbackText: agencyInfo.agencyName,
+                            height: 40,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: appBarColor,
-                  elevation: 0,
-                  iconTheme:
-                      const IconThemeData(color: AppColors.homeGradientStart),
-                  // actions removed for side menu
-                ),
-                floatingActionButton: isDesktop &&
-                        ((_selectedMenuItem == SideMenuItem.groups &&
-                                permissions.contains('trips.create')) ||
-                            (_selectedMenuItem == SideMenuItem.templates &&
-                                permissions.contains('templates.edit')))
-                    ? FloatingActionButton(
-                        backgroundColor: AppColors.navActive,
-                        onPressed: () => _showAddGroupOptions(
-                            context, agencyInfo, agencyCode),
-                        child: const Icon(Icons.add, color: Colors.white),
-                      )
-                    : null,
-                body: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets
-                      .zero, // Remove padding to let bottom panel touch edges
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.scaffoldGradientStart,
-                        AppColors.scaffoldGradientEnd,
                       ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: [0.0, 0.5],
+                    ),
+                    backgroundColor: appBarColor,
+                    elevation: 0,
+                    iconTheme:
+                        const IconThemeData(color: AppColors.homeGradientStart),
+                    // actions removed for side menu
+                  ),
+                  floatingActionButton: isDesktop &&
+                          ((_selectedMenuItem == SideMenuItem.groups &&
+                                  permissions.contains('trips.create')) ||
+                              (_selectedMenuItem == SideMenuItem.templates &&
+                                  permissions.contains('templates.edit')))
+                      ? FloatingActionButton(
+                          backgroundColor: AppColors.navActive,
+                          onPressed: () => _showAddGroupOptions(
+                              context, agencyInfo, agencyCode),
+                          child: const Icon(Icons.add, color: Colors.white),
+                        )
+                      : null,
+                  body: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets
+                        .zero, // Remove padding to let bottom panel touch edges
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.scaffoldGradientStart,
+                          AppColors.scaffoldGradientEnd,
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: [0.0, 0.5],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        if (isDesktop)
+                          _buildSideMenu(appBarColor, agencyInfo, permissions,
+                              isDrawer: false),
+                        Expanded(
+                          child: _buildMainContent(
+                            appBarColor: appBarColor,
+                            agencyCode: agencyCode,
+                            agencyInfo: agencyInfo,
+                            data: data,
+                            displayedGroups: displayedGroups,
+                            isDesktop: isDesktop,
+                            permissions: permissions,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      if (isDesktop)
-                        _buildSideMenu(appBarColor, agencyInfo, permissions,
-                            isDrawer: false),
-                      Expanded(
-                        child: _buildMainContent(
-                          appBarColor: appBarColor,
-                          agencyCode: agencyCode,
-                          agencyInfo: agencyInfo,
-                          data: data,
-                          displayedGroups: displayedGroups,
-                          isDesktop: isDesktop,
-                          permissions: permissions,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
         ),
       ),
     );
@@ -487,8 +487,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
           children: [
             Icon(Icons.lock_outline, size: 40, color: Colors.grey[400]),
             const SizedBox(height: AppSpacing.md),
-            Text('Ingen adgang',
-                style: AppTextStyles.headingBold()),
+            Text('Ingen adgang', style: AppTextStyles.headingBold()),
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Din rolle giver ikke adgang til denne side.',
@@ -566,12 +565,33 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                     style: GoogleFonts.kanit(fontSize: 12)),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  Navigator.of(context).push(
+                  if (!agencyInfo.aiTripBuilderEnabled) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'AI Trip Builder er ikke en del af jeres plan endnu — se mere under Indstillinger.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.of(context)
+                      .push(
                     MaterialPageRoute(
-                      builder: (_) =>
-                          AiTripBuilderScreen(themeColor: themeColor),
+                      builder: (_) => AiTripBuilderScreen(
+                        themeColor: themeColor,
+                        agencyCode: agencyCode,
+                        bureauName: agencyInfo.agencyName,
+                      ),
                     ),
-                  );
+                  )
+                      .then((newGroup) {
+                    if (newGroup is GroupInformation && mounted) {
+                      setState(() {
+                        _groups.add(newGroup);
+                      });
+                    }
+                  });
                 },
               ),
             ],
@@ -643,6 +663,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
       return GroupDetailsScreen(
         groupId: _selectedGroup!.groupId,
         repository: context.read<GroupInformationRepository>(),
+        agencyInfo: agencyInfo,
         canEditTrips: permissions.contains('trips.edit'),
       );
     } else if (_selectedMenuItem == SideMenuItem.photoLibrary) {
@@ -700,6 +721,9 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         standardMessage: data['standardMessage'] as String?,
         standardMessageTitle: data['standardMessageTitle'] as String?,
         isNested: true,
+        onGroupCreated: (newGroup) {
+          if (mounted) setState(() => _groups.add(newGroup));
+        },
       );
     }
 
@@ -814,8 +838,8 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     );
   }
 
-  Widget _buildSideMenu(Color primaryColor, AgencyInformation agencyInfo,
-      Set<String> permissions,
+  Widget _buildSideMenu(
+      Color primaryColor, AgencyInformation agencyInfo, Set<String> permissions,
       {bool isDrawer = false}) {
     final menuContent = Container(
       width: 266,
@@ -834,31 +858,63 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
               ),
             ),
           if (!isDrawer) const SizedBox(height: AppSpacing.xl),
-          _buildMenuOption('Dashboard', Icons.space_dashboard,
-              SideMenuItem.dashboard, primaryColor, agencyInfo, isDrawer),
-          _buildRejserMenuSection(primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('templates.edit'))
-            _buildMenuOption('Skabeloner', Icons.copy_all,
-                SideMenuItem.templates, primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('photo_library.edit'))
-            _buildMenuOption('Fotobibliotek', Icons.photo_library,
-                SideMenuItem.photoLibrary, primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('packing_lists.edit'))
-            _buildMenuOption('Pakkelister', Icons.checklist,
-                SideMenuItem.packingList, primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('users.edit'))
-            _buildMenuOption('Brugere', Icons.people, SideMenuItem.users,
-                primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('employees.manage'))
-            _buildMenuOption('Team', Icons.badge, SideMenuItem.team,
-                primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('app_settings.edit'))
-            _buildMenuOption('App', Icons.smartphone, SideMenuItem.app,
-                primaryColor, agencyInfo, isDrawer),
-          if (permissions.contains('agency_settings.edit'))
-            _buildMenuOption('Indstillinger', Icons.settings,
-                SideMenuItem.settings, primaryColor, agencyInfo, isDrawer),
-          const Spacer(),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildMenuOption(
+                      'Dashboard',
+                      Icons.space_dashboard,
+                      SideMenuItem.dashboard,
+                      primaryColor,
+                      agencyInfo,
+                      isDrawer),
+                  _buildRejserMenuSection(primaryColor, agencyInfo, isDrawer),
+                  if (permissions.contains('templates.edit'))
+                    _buildMenuOption(
+                        'Skabeloner',
+                        Icons.copy_all,
+                        SideMenuItem.templates,
+                        primaryColor,
+                        agencyInfo,
+                        isDrawer),
+                  if (permissions.contains('photo_library.edit'))
+                    _buildMenuOption(
+                        'Fotobibliotek',
+                        Icons.photo_library,
+                        SideMenuItem.photoLibrary,
+                        primaryColor,
+                        agencyInfo,
+                        isDrawer),
+                  if (permissions.contains('packing_lists.edit'))
+                    _buildMenuOption(
+                        'Pakkelister',
+                        Icons.checklist,
+                        SideMenuItem.packingList,
+                        primaryColor,
+                        agencyInfo,
+                        isDrawer),
+                  if (permissions.contains('users.edit'))
+                    _buildMenuOption('Brugere', Icons.people,
+                        SideMenuItem.users, primaryColor, agencyInfo, isDrawer),
+                  if (permissions.contains('employees.manage'))
+                    _buildMenuOption('Team', Icons.badge, SideMenuItem.team,
+                        primaryColor, agencyInfo, isDrawer),
+                  if (permissions.contains('app_settings.edit'))
+                    _buildMenuOption('App', Icons.smartphone,
+                        SideMenuItem.app, primaryColor, agencyInfo, isDrawer),
+                  if (permissions.contains('agency_settings.edit'))
+                    _buildMenuOption(
+                        'Indstillinger',
+                        Icons.settings,
+                        SideMenuItem.settings,
+                        primaryColor,
+                        agencyInfo,
+                        isDrawer),
+                ],
+              ),
+            ),
+          ),
           _buildSwitchAgencyOption(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1181,9 +1237,10 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                       const PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
-                          leading: Icon(Icons.delete_outline, color: Colors.red),
-                          title:
-                              Text('Slet rejse', style: TextStyle(color: Colors.red)),
+                          leading:
+                              Icon(Icons.delete_outline, color: Colors.red),
+                          title: Text('Slet rejse',
+                              style: TextStyle(color: Colors.red)),
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
@@ -1198,16 +1255,12 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _fieldTile(
-                        Icons.flight_takeoff,
-                        'Afrejse',
+                    child: _fieldTile(Icons.flight_takeoff, 'Afrejse',
                         '${DateFormat('dd. MMM yyyy', 'da_DK').format(group.departureDate)} · ${group.departureFrom}'),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: _fieldTile(
-                        Icons.flight_land,
-                        'Hjemkomst',
+                    child: _fieldTile(Icons.flight_land, 'Hjemkomst',
                         '${DateFormat('dd. MMM yyyy', 'da_DK').format(group.returnDate)} · ${group.returnTo}'),
                   ),
                 ],
@@ -1218,8 +1271,8 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                   _statTile(Icons.people_outline, '${group.members.length}',
                       'Medlemmer'),
                   const SizedBox(width: AppSpacing.xl),
-                  _statTile(Icons.support_agent, '${group.guides.length}',
-                      'Guider'),
+                  _statTile(
+                      Icons.support_agent, '${group.guides.length}', 'Guider'),
                   const Spacer(),
                   if (group.flightAway)
                     Padding(
@@ -1247,8 +1300,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
 
   Widget _statusBadge(String label, Color color) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
@@ -1279,7 +1331,8 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             Expanded(
               child: Text(
                 value,
-                style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w500),
+                style:
+                    AppTextStyles.body().copyWith(fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -1295,8 +1348,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         Icon(icon, size: 16, color: Colors.grey[500]),
         const SizedBox(width: 5),
         Text(value,
-            style:
-                AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
+            style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(width: 3),
         Text(label, style: AppTextStyles.caption()),
       ],
@@ -1478,8 +1530,7 @@ class _FilterDialogState extends State<_FilterDialog> {
                 child: InputDecorator(
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.calendar_today),
-                    border: OutlineInputBorder(
-                        borderRadius: AppRadii.mdRadius),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -1543,7 +1594,8 @@ class _FilterDialogState extends State<_FilterDialog> {
 }
 
 // Purely administrative bureau fields only (agencyName, returnMail) plus
-// the CRM integrations card and account actions (Gem/Log ud). Everything
+// the CRM integrations card. No logout button here — that already lives in
+// the sidebar (see _handleLogout on GroupSelectionScreen above). Everything
 // that's actually shown to a traveler in the app (branding, emergency
 // phone, welcome message, map default) lives exclusively in AppScreen
 // (app_screen.dart) now — deliberately not duplicated here, and saved via
@@ -1559,6 +1611,12 @@ class BureauSettingsScreen extends StatefulWidget {
   final String? standardMessage;
   final String? standardMessageTitle;
   final bool isNested;
+  // Lets the AI Trip Builder entry point below hand a newly created trip
+  // back up to GroupSelectionScreen's own `_groups` list — this screen
+  // itself holds no group list to update, and (unlike _AddGroupDialog,
+  // which GroupSelectionScreen pushes and awaits directly) the AI builder
+  // is pushed from inside here, several widgets removed from `_groups`.
+  final ValueChanged<GroupInformation>? onGroupCreated;
 
   const BureauSettingsScreen({
     super.key,
@@ -1566,6 +1624,7 @@ class BureauSettingsScreen extends StatefulWidget {
     this.standardMessage,
     this.standardMessageTitle,
     this.isNested = false,
+    this.onGroupCreated,
   });
 
   @override
@@ -1709,21 +1768,22 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       borderRadius: AppRadii.lgRadius,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: AppRadii.lgRadius,
-          boxShadow: AppShadows.card,
-        ),
+        decoration: _panelDecoration(themeColor),
         child: Row(
           children: [
             Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: themeColor.withValues(alpha: 0.1),
-                borderRadius: AppRadii.mdRadius,
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    themeColor.withValues(alpha: 0.22),
+                    themeColor.withValues(alpha: 0.08),
+                  ],
+                ),
               ),
-              child: Icon(Icons.message_outlined, color: themeColor, size: 20),
+              child: Icon(Icons.message_outlined, color: themeColor, size: 19),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -1743,7 +1803,8 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                         : 'Tryk for at tilføje besked',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
+                    style: GoogleFonts.kanit(
+                        fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -1754,8 +1815,6 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       ),
     );
   }
-
-  Future<void> _handleLogout() => performLogout(context);
 
   @override
   Widget build(BuildContext context) {
@@ -1778,40 +1837,28 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSectionTitle('Kontaktinformation'),
-            _buildContactCard(),
-            const SizedBox(height: AppSpacing.lg),
-            _buildSectionTitle('Nødtelefon'),
-            _buildPhoneCard(),
-            const SizedBox(height: AppSpacing.lg),
-            _buildSectionTitle('Velkomstbesked'),
+            _buildHeader(themeColor),
+            const SizedBox(height: AppSpacing.xxl),
+            _buildSectionTitle(
+                'Kontaktinformation', Icons.badge_outlined, themeColor),
+            _buildContactCard(themeColor),
+            const SizedBox(height: AppSpacing.xxl),
+            _buildSectionTitle(
+                'Nødtelefon', Icons.emergency_outlined, themeColor),
+            _buildPhoneCard(themeColor),
+            const SizedBox(height: AppSpacing.xxl),
+            _buildSectionTitle(
+                'Velkomstbesked', Icons.message_outlined, themeColor),
             _buildWelcomeMessageCard(themeColor),
-            const SizedBox(height: AppSpacing.lg),
-            _buildSectionTitle('Integrationer'),
+            const SizedBox(height: AppSpacing.xxl),
+            _buildSectionTitle('Integrationer', Icons.hub_outlined, themeColor),
             _buildIntegrationsCardWithAdminAccess(themeColor),
             const SizedBox(height: AppSpacing.xl),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout, size: 18),
-                label: Text('Log ud',
-                    style: GoogleFonts.kanit(
-                        fontSize: 14, fontWeight: FontWeight.w500)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: BorderSide(
-                      color: Colors.red.withOpacity(0.5), width: 1.5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
+            Center(
+              child: Text(
+                'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
+                style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
               ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              'Emails brugt: ${widget.agencyInfo.emailCount} / ${widget.agencyInfo.maxEmails}',
-              style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 12),
             ),
           ],
         ),
@@ -1819,34 +1866,107 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  // Same gradient-identity header language as AppScreen's editor (see
+  // app_screen.dart's _buildHeader) — no logo here since this screen is
+  // purely administrative, never traveler-facing.
+  Widget _buildHeader(Color themeColor) {
+    final name = widget.agencyInfo.agencyName;
+    final darker = Color.lerp(themeColor, Colors.black, 0.28)!;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [themeColor, darker],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: themeColor.withValues(alpha: 0.35),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+            spreadRadius: -10,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text('BUREAUINDSTILLINGER',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                  color: Colors.white.withValues(alpha: 0.75))),
+          const SizedBox(height: 10),
+          Text(name.isNotEmpty ? name : 'Jeres bureau',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
+          const SizedBox(height: 8),
+          Text(
+              'Kontaktoplysninger, velkomstbesked og integrationer for jeres bureau.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.kanit(
+                  fontSize: 12.5, color: Colors.white.withValues(alpha: 0.85))),
+        ],
+      ),
+    );
+  }
+
+  // (Panel decoration moved to the top-level _panelDecoration function near
+  // _GlowSwitch below — shared with AgencyImagesScreen and
+  // PackingListLibraryScreen, which need the same look too.)
+
+  // Pill badge (icon + label) instead of a plain heading — same idiom as
+  // AppScreen's section titles.
+  Widget _buildSectionTitle(String title, IconData icon, Color themeColor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: AppTextStyles.heading(),
+      padding: const EdgeInsets.only(bottom: 14, left: 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              themeColor.withValues(alpha: 0.16),
+              themeColor.withValues(alpha: 0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: themeColor),
+            const SizedBox(width: 6),
+            Text(title.toUpperCase(),
+                style: GoogleFonts.kanit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: themeColor)),
+          ],
         ),
       ),
     );
   }
 
-
-  Widget _buildContactCard() {
+  Widget _buildContactCard(Color themeColor) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
+      decoration: _panelDecoration(themeColor),
       child: Column(
         children: [
           _buildTextField(
             controller: _nameController,
             label: 'Bureau Navn',
             icon: Icons.business,
+            themeColor: themeColor,
             helperText: 'Internt navn — vises ikke i appen',
             onChanged: (_) => _debouncedSaveBureauInfo(),
           ),
@@ -1855,6 +1975,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
             controller: _emailController,
             label: 'Kontakt e-mail',
             icon: Icons.email,
+            themeColor: themeColor,
             keyboardType: TextInputType.emailAddress,
             onChanged: (_) => _debouncedSaveBureauInfo(),
           ),
@@ -1869,24 +1990,20 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         Timer(const Duration(milliseconds: 700), _saveBureauInfo);
   }
 
-  Widget _buildPhoneCard() {
+  Widget _buildPhoneCard(Color themeColor) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppRadii.lgRadius,
-        boxShadow: AppShadows.card,
-      ),
+      decoration: _panelDecoration(themeColor),
       child: _buildTextField(
         controller: _phoneController,
         label: 'Nødtelefon',
         icon: Icons.phone,
+        themeColor: themeColor,
         keyboardType: TextInputType.phone,
         helperText: 'Vist til rejsende i appens nødhjælps-dialog',
         onChanged: (value) {
           _phoneDebounce?.cancel();
-          _phoneDebounce = Timer(
-              const Duration(milliseconds: 700),
+          _phoneDebounce = Timer(const Duration(milliseconds: 700),
               () => _saveAppField({'emergencyPhone': value}));
         },
       ),
@@ -2041,26 +2158,26 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
     final iconColor = isActivated ? themeColor : Colors.grey[400]!;
     return InkWell(
       onTap: onTap,
-      borderRadius: AppRadii.lgRadius,
+      borderRadius: BorderRadius.circular(22),
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: AppRadii.lgRadius,
-          boxShadow: AppShadows.card,
-        ),
+        decoration: _panelDecoration(themeColor),
         child: Row(
           children: [
             Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isActivated
-                    ? themeColor.withValues(alpha: 0.1)
-                    : Colors.grey[100],
-                borderRadius: AppRadii.mdRadius,
+                shape: BoxShape.circle,
+                gradient: isActivated
+                    ? LinearGradient(colors: [
+                        themeColor.withValues(alpha: 0.24),
+                        themeColor.withValues(alpha: 0.08),
+                      ])
+                    : LinearGradient(
+                        colors: [Colors.grey[200]!, Colors.grey[100]!]),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: iconColor, size: 19),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -2098,10 +2215,10 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
               ),
             ),
             if (isSuperAdmin && onToggle != null) ...[
-              Switch(
+              _GlowSwitch(
                 value: isActivated,
+                color: themeColor,
                 onChanged: onToggle,
-                activeThumbColor: themeColor,
               ),
               const SizedBox(width: AppSpacing.xs),
             ],
@@ -2141,8 +2258,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: Text(title,
-                  style: AppTextStyles.headingBold()),
+              child: Text(title, style: AppTextStyles.headingBold()),
             ),
           ],
         ),
@@ -2162,12 +2278,10 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.check_circle,
-                              size: 16, color: themeColor),
+                          Icon(Icons.check_circle, size: 16, color: themeColor),
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
-                            child: Text(h,
-                                style: AppTextStyles.body()),
+                            child: Text(h, style: AppTextStyles.body()),
                           ),
                         ],
                       ),
@@ -2248,17 +2362,28 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
   }
 
   void _openAiTripBuilderScreen(Color themeColor) {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(
-        builder: (context) => AiTripBuilderScreen(themeColor: themeColor),
+        builder: (context) => AiTripBuilderScreen(
+          themeColor: themeColor,
+          agencyCode: widget.agencyInfo.agencyCode,
+          bureauName: widget.agencyInfo.agencyName,
+        ),
       ),
-    );
+    )
+        .then((newGroup) {
+      if (newGroup is GroupInformation) {
+        widget.onGroupCreated?.call(newGroup);
+      }
+    });
   }
 
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required Color themeColor,
     TextInputType? keyboardType,
     int maxLines = 1,
     String? helperText,
@@ -2275,7 +2400,8 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         helperText: helperText,
         helperStyle: GoogleFonts.kanit(fontSize: 11),
         labelStyle: GoogleFonts.kanit(color: Colors.grey[600]),
-        prefixIcon: Icon(icon, color: Colors.grey[400], size: 20),
+        prefixIcon:
+            Icon(icon, color: themeColor.withValues(alpha: 0.6), size: 20),
         border: OutlineInputBorder(
           borderRadius: AppRadii.mdRadius,
           borderSide: BorderSide(color: Colors.grey[300]!),
@@ -2286,7 +2412,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: AppRadii.mdRadius,
-          borderSide: BorderSide(color: AppColors.darkGreen, width: 2),
+          borderSide: BorderSide(color: themeColor, width: 1.5),
         ),
         filled: true,
         fillColor: Colors.grey[50],
@@ -2295,7 +2421,99 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       ),
     );
   }
+}
 
+// Soft gradient-tinted panel with a colored glow shadow instead of a flat
+// gray card — same look as AppScreen's _panelDecoration (app_screen.dart).
+// A top-level function (not a method) so BureauSettingsScreen,
+// AgencyImagesScreen, and PackingListLibraryScreen can all share it.
+BoxDecoration _panelDecoration(Color themeColor) {
+  return BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white,
+        Color.alphaBlend(themeColor.withValues(alpha: 0.035), Colors.white),
+      ],
+    ),
+    borderRadius: BorderRadius.circular(22),
+    border: Border.all(color: themeColor.withValues(alpha: 0.10)),
+    boxShadow: [
+      BoxShadow(
+        color: themeColor.withValues(alpha: 0.12),
+        blurRadius: 28,
+        offset: const Offset(0, 14),
+        spreadRadius: -10,
+      ),
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.03),
+        blurRadius: 6,
+        offset: const Offset(0, 2),
+      ),
+    ],
+  );
+}
+
+// A hand-built pill toggle (not the stock Material Switch) — same look as
+// AppScreen's _GlowSwitch (app_screen.dart): a colored glow halo behind the
+// track when ON, and an animated sliding thumb.
+class _GlowSwitch extends StatelessWidget {
+  const _GlowSwitch({
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Color color;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final darker = Color.lerp(color, Colors.black, 0.15)!;
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        width: 46,
+        height: 27,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: value ? null : Colors.grey[300],
+          gradient: value ? LinearGradient(colors: [color, darker]) : null,
+          boxShadow: value
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.45),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : const [],
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 21,
+            height: 21,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AgencyImagesScreen extends StatefulWidget {
@@ -2403,8 +2621,9 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
         isFull ? Colors.red : (isNearFull ? Colors.orange : widget.mainColor);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      color: Colors.white,
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: _panelDecoration(widget.mainColor),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2551,7 +2770,8 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 10),
                                   child: Text('Zoom ud/ind herover',
-                                      style: AppTextStyles.body(color: Colors.grey)),
+                                      style: AppTextStyles.body(
+                                          color: Colors.grey)),
                                 ),
                                 const Icon(Icons.zoom_in,
                                     size: 20, color: Colors.grey),
@@ -3116,26 +3336,15 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
                                         },
                                         borderRadius: AppRadii.mdRadius,
                                         child: Container(
-                                            decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    AppRadii.mdRadius,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                      color: Colors.black
-                                                          .withOpacity(0.05),
-                                                      blurRadius: 4,
-                                                      offset:
-                                                          const Offset(0, 2))
-                                                ],
-                                                border: Border.all(
-                                                    color: Colors.grey[200]!)),
+                                            decoration: _panelDecoration(
+                                                widget.mainColor),
                                             padding: const EdgeInsets.symmetric(
                                                 horizontal: 16),
                                             child: Row(children: [
                                               Icon(Icons.folder,
                                                   color: widget.mainColor),
-                                              const SizedBox(width: AppSpacing.md),
+                                              const SizedBox(
+                                                  width: AppSpacing.md),
                                               Expanded(
                                                   child: Text(folder.name,
                                                       style: GoogleFonts.kanit(
@@ -3340,19 +3549,20 @@ class _PackingListLibraryScreenState extends State<PackingListLibraryScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: AppShadows.card,
-                ),
+                decoration: _panelDecoration(widget.mainColor),
                 child: Row(
                   children: [
                     Container(
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: widget.mainColor.withValues(alpha: 0.1),
-                        borderRadius: AppRadii.mdRadius,
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            widget.mainColor.withValues(alpha: 0.22),
+                            widget.mainColor.withValues(alpha: 0.08),
+                          ],
+                        ),
                       ),
                       child: Icon(
                         MdiIcons.fromString(
@@ -3486,8 +3696,7 @@ class _PackingListCategoryDialogState
       context: context,
       builder: (iconDialogContext) => Dialog(
         backgroundColor: AppColors.iconPickerDialog,
-        shape:
-            RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.7,
@@ -3589,8 +3798,7 @@ class _PackingListCategoryDialogState
                   labelStyle: GoogleFonts.kanit(color: Colors.grey[600]),
                   prefixIcon:
                       Icon(Icons.label_outline, color: Colors.grey[400]),
-                  border: OutlineInputBorder(
-                      borderRadius: AppRadii.mdRadius),
+                  border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: AppRadii.mdRadius,
                     borderSide: BorderSide(color: Colors.grey[300]!),
@@ -3663,8 +3871,7 @@ class _PackingListCategoryDialogState
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Indhold',
-                      style: AppTextStyles.heading()),
+                  Text('Indhold', style: AppTextStyles.heading()),
                   TextButton.icon(
                     onPressed: _addItem,
                     icon: Icon(Icons.add_circle_outline,
@@ -3962,8 +4169,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                   decoration: InputDecoration(
                     labelText: 'Gruppe Navn',
                     prefixIcon: const Icon(Icons.label),
-                    border: OutlineInputBorder(
-                        borderRadius: AppRadii.mdRadius),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -3975,8 +4181,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
                   decoration: InputDecoration(
                     labelText: 'Ny Gruppe ID',
                     prefixIcon: const Icon(Icons.vpn_key),
-                    border: OutlineInputBorder(
-                        borderRadius: AppRadii.mdRadius),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -4086,8 +4291,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.onPrimary,
-              shape: RoundedRectangleBorder(
-                  borderRadius: AppRadii.mdRadius),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
             ),
             onPressed: _isLoading ? null : _duplicateGroup,
             child: _isLoading
@@ -4143,12 +4347,11 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           .doc(widget.agencyCode)
           .get();
       final data = doc.data();
-      _agencyMapEnabledDefault =
-          data?['mapEnabledDefault'] as bool? ?? false;
+      _agencyMapEnabledDefault = data?['mapEnabledDefault'] as bool? ?? false;
       if (doc.exists && data!.containsKey('packingListLibrary')) {
         setState(() {
-          _library = List<Map<String, dynamic>>.from(
-              data['packingListLibrary']);
+          _library =
+              List<Map<String, dynamic>>.from(data['packingListLibrary']);
           _loadingLibrary = false;
         });
       } else {
@@ -4324,8 +4527,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                   decoration: InputDecoration(
                     labelText: 'Gruppe Navn',
                     prefixIcon: const Icon(Icons.label),
-                    border: OutlineInputBorder(
-                        borderRadius: AppRadii.mdRadius),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -4337,8 +4539,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
                   decoration: InputDecoration(
                     labelText: 'Gruppe ID',
                     prefixIcon: const Icon(Icons.vpn_key),
-                    border: OutlineInputBorder(
-                        borderRadius: AppRadii.mdRadius),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
@@ -4488,8 +4689,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: AppColors.onPrimary,
-            shape:
-                RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
+            shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
           ),
           onPressed: _saveGroup,
           child: const Text('Opret'),

@@ -20,14 +20,23 @@ import 'package:image_cropper/image_cropper.dart';
 class TimelineDialog extends StatefulWidget {
   final TimelineEvent? event;
   final dynamic groupInformation;
-  final GroupInformationRepository repository;
+  final GroupInformationRepository? repository;
+
+  /// Draft mode, for trips that don't exist in Firestore yet (the AI Trip
+  /// Builder's review step): Save hands the edited event to [onDraftSave]
+  /// and Delete calls [onDraftDelete] instead of writing to
+  /// groups/{groupId}. [repository] is then unused.
+  final ValueChanged<TimelineEvent>? onDraftSave;
+  final VoidCallback? onDraftDelete;
 
   const TimelineDialog({
     super.key,
     this.event,
     required this.groupInformation,
-    required this.repository,
-  });
+    this.repository,
+    this.onDraftSave,
+    this.onDraftDelete,
+  }) : assert(repository != null || onDraftSave != null);
 
   @override
   State<TimelineDialog> createState() => _TimelineDialogState();
@@ -67,6 +76,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
   bool _geocoding = false;
   String? _geocodeError;
   bool get _mapEnabled => widget.groupInformation.mapEnabled == true;
+  bool get _isDraft => widget.onDraftSave != null;
 
   // Keeps the address field mirroring "Land, By eller Område" until the
   // admin edits the address directly — at that point their edit wins and
@@ -284,7 +294,18 @@ class _TimelineDialogState extends State<TimelineDialog> {
         longitude: _mapEnabled ? _longitude : null,
       );
 
-      final groupDocRef = widget.repository.firestore
+      if (_isDraft) {
+        widget.onDraftSave!(savedEvent);
+        for (final url in _sessionUploadedImages) {
+          if (url != savedEvent.imageURL) {
+            await _deleteImageFromStorage(url);
+          }
+        }
+        if (mounted) Navigator.pop(context, savedEvent);
+        return;
+      }
+
+      final groupDocRef = widget.repository!.firestore
           .collection('groups')
           .doc(widget.groupInformation.groupId);
       final groupSnapshot = await groupDocRef.get();
@@ -365,8 +386,13 @@ class _TimelineDialogState extends State<TimelineDialog> {
   }
 
   Future<void> _deleteEvent() async {
+    if (_isDraft) {
+      widget.onDraftDelete?.call();
+      Navigator.of(context).pop(null);
+      return;
+    }
     try {
-      final groupDocRef = widget.repository.firestore
+      final groupDocRef = widget.repository!.firestore
           .collection('groups')
           .doc(widget.groupInformation.groupId);
       final groupSnapshot = await groupDocRef.get();

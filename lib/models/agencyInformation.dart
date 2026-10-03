@@ -38,6 +38,24 @@ class AgencyInformation extends Equatable {
   final bool groupScreenEnabled;
   final bool documentsScreenEnabled;
 
+  // Whether travelers can compose new message threads and reply to
+  // existing ones. Default true — false restricts a bureau's message
+  // boards to bureau-only sending, travelers can still read every thread.
+  final bool travelersCanMessage;
+
+  // Whether a first-time traveler is shown the app's onboarding showcase
+  // (the guided tour of Home/Huskeliste/Gruppe/Dokumenter) right after
+  // login. Default true — same "don't change existing bureaus' behavior"
+  // reasoning as the toggles above.
+  final bool introTourEnabled;
+
+  // Whether a traveler who hasn't answered yet is asked for email-marketing
+  // consent right after login/the tour. Default true. Travelers who are
+  // never asked (this off, or they just haven't logged in since) count as
+  // "no consent on record" wherever this is read — see MarketingConsentDialog
+  // and UsersScreen's "Email marketing" chip — never as an unknown state.
+  final bool marketingConsentEnabled;
+
   // Bureau-wide affiliate links, shown on every trip's packing list in the
   // traveler app (alongside any trip-specific ones a group has of its own).
   final List<Coupon> coupons;
@@ -60,6 +78,9 @@ class AgencyInformation extends Equatable {
     this.packingListScreenEnabled = true,
     this.groupScreenEnabled = true,
     this.documentsScreenEnabled = true,
+    this.travelersCanMessage = true,
+    this.introTourEnabled = true,
+    this.marketingConsentEnabled = true,
     this.coupons = const [],
   });
 
@@ -86,6 +107,10 @@ class AgencyInformation extends Equatable {
           data['packingListScreenEnabled'] as bool? ?? true,
       groupScreenEnabled: data['groupScreenEnabled'] as bool? ?? true,
       documentsScreenEnabled: data['documentsScreenEnabled'] as bool? ?? true,
+      travelersCanMessage: data['travelersCanMessage'] as bool? ?? true,
+      introTourEnabled: data['introTourEnabled'] as bool? ?? true,
+      marketingConsentEnabled:
+          data['marketingConsentEnabled'] as bool? ?? true,
       coupons: ((data['coupons'] as List?) ?? const [])
           .map((c) => Coupon.fromSnapshot(Map<String, dynamic>.from(c as Map)))
           .toList(),
@@ -111,6 +136,9 @@ class AgencyInformation extends Equatable {
         packingListScreenEnabled,
         groupScreenEnabled,
         documentsScreenEnabled,
+        travelersCanMessage,
+        introTourEnabled,
+        marketingConsentEnabled,
         coupons,
       ];
 }

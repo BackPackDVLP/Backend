@@ -110,8 +110,7 @@ class _UsersScreenState extends State<UsersScreen> {
       List<QueryDocumentSnapshot> userDocs) {
     if (!identical(_cachedUserDocs, userDocs)) {
       _cachedUserDocs = userDocs;
-      _cachedSearchEntries =
-          Future.wait(userDocs.map(_resolveSearchEntry));
+      _cachedSearchEntries = Future.wait(userDocs.map(_resolveSearchEntry));
     }
     return _cachedSearchEntries!;
   }
@@ -157,8 +156,7 @@ class _UsersScreenState extends State<UsersScreen> {
       for (final groupDoc in groupDocs) {
         if (!groupDoc.exists) continue;
         final groupData = groupDoc.data();
-        groupNames
-            .add((groupData?['groupName'] as String?) ?? groupDoc.id);
+        groupNames.add((groupData?['groupName'] as String?) ?? groupDoc.id);
         final member = _findMemberByEmail(groupDoc, email);
         if (member != null) {
           if (name.isEmpty) name = (member['name'] as String?) ?? '';
@@ -188,8 +186,7 @@ class _UsersScreenState extends State<UsersScreen> {
     String prefillName = data['name'] as String? ?? '';
     String prefillPhone =
         (data['phoneNumber'] != null) ? data['phoneNumber'].toString() : '';
-    String prefillWhatsapp =
-        (data['whatsappNumber'] as String?)?.trim() ?? '';
+    String prefillWhatsapp = (data['whatsappNumber'] as String?)?.trim() ?? '';
 
     final groupIds = _groupIdsForUser(data);
     if (groupIds.isNotEmpty) {
@@ -292,8 +289,7 @@ class _UsersScreenState extends State<UsersScreen> {
             }
 
             return Dialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: AppRadii.lgRadius),
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
               child: ConstrainedBox(
                 constraints:
                     const BoxConstraints(maxWidth: 480, maxHeight: 680),
@@ -457,8 +453,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                     if (hasWhatsapp) ...[
                                       const SizedBox(height: AppSpacing.sm),
                                       PhoneNumberField(
-                                        key: ValueKey(
-                                            'whatsapp-$hasWhatsapp'),
+                                        key: ValueKey('whatsapp-$hasWhatsapp'),
                                         initialValue: whatsappValue,
                                         label: 'WhatsApp-nummer',
                                         icon: MdiIcons.whatsapp,
@@ -500,7 +495,8 @@ class _UsersScreenState extends State<UsersScreen> {
                                       Expanded(
                                         child: Text(
                                           errorMessage!,
-                                          style: AppTextStyles.body(color: Colors.red[700]),
+                                          style: AppTextStyles.body(
+                                              color: Colors.red[700]),
                                         ),
                                       ),
                                     ],
@@ -538,8 +534,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                       ),
                                     );
                                   }
-                                  final allGroupDocs = groupsSnapshot
-                                      .data!.docs
+                                  final allGroupDocs = groupsSnapshot.data!.docs
                                       .where((g) =>
                                           (g.data() as Map<String, dynamic>)[
                                               'isTemplate'] !=
@@ -556,10 +551,9 @@ class _UsersScreenState extends State<UsersScreen> {
                                     });
 
                                   bool isMemberOf(QueryDocumentSnapshot g) {
-                                    final members =
-                                        ((g.data() as Map)['members']
-                                                as List?) ??
-                                            const [];
+                                    final members = ((g.data()
+                                            as Map)['members'] as List?) ??
+                                        const [];
                                     return members.cast<Map?>().any((m) =>
                                         m != null &&
                                         (m['email'] as String?)
@@ -580,24 +574,24 @@ class _UsersScreenState extends State<UsersScreen> {
                                       : allGroupDocs
                                           .where((g) => !isMemberOf(g))
                                           .where((g) {
-                                          final name = (((g.data() as Map)[
-                                                      'groupName']
-                                                  as String?) ??
-                                              g.id);
-                                          return name
-                                              .toLowerCase()
-                                              .contains(query);
-                                        }).take(20).toList();
+                                            final name =
+                                                (((g.data() as Map)['groupName']
+                                                        as String?) ??
+                                                    g.id);
+                                            return name
+                                                .toLowerCase()
+                                                .contains(query);
+                                          })
+                                          .take(20)
+                                          .toList();
 
-                                  Widget tripRow(
-                                      QueryDocumentSnapshot groupDoc,
+                                  Widget tripRow(QueryDocumentSnapshot groupDoc,
                                       bool isMember) {
                                     final groupName = ((groupDoc.data()
-                                                as Map)['groupName']
-                                            as String?) ??
+                                            as Map)['groupName'] as String?) ??
                                         groupDoc.id;
-                                    final isPending = pendingGroupIds
-                                        .contains(groupDoc.id);
+                                    final isPending =
+                                        pendingGroupIds.contains(groupDoc.id);
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 2),
@@ -617,13 +611,11 @@ class _UsersScreenState extends State<UsersScreen> {
                                                   color: widget.mainColor),
                                             )
                                           else
-                                            Switch(
+                                            _GlowSwitch(
                                               value: isMember,
-                                              activeThumbColor:
-                                                  widget.mainColor,
-                                              onChanged: (value) =>
-                                                  toggleGroup(
-                                                      groupDoc.id, value),
+                                              color: widget.mainColor,
+                                              onChanged: (value) => toggleGroup(
+                                                  groupDoc.id, value),
                                             ),
                                         ],
                                       ),
@@ -645,8 +637,8 @@ class _UsersScreenState extends State<UsersScreen> {
                                             .map((g) => tripRow(g, true)),
                                       const SizedBox(height: AppSpacing.md),
                                       TextField(
-                                        onChanged: (v) => setState(
-                                            () => tripSearchQuery = v),
+                                        onChanged: (v) =>
+                                            setState(() => tripSearchQuery = v),
                                         style: GoogleFonts.kanit(fontSize: 13),
                                         decoration: InputDecoration(
                                           isDense: true,
@@ -654,12 +646,10 @@ class _UsersScreenState extends State<UsersScreen> {
                                               'Søg for at tilføje en anden rejse...',
                                           hintStyle: AppTextStyles.body(
                                               color: Colors.grey[500]),
-                                          prefixIcon: const Icon(
-                                              Icons.search,
+                                          prefixIcon: const Icon(Icons.search,
                                               size: 18),
                                           border: OutlineInputBorder(
-                                              borderRadius:
-                                                  AppRadii.smRadius),
+                                              borderRadius: AppRadii.smRadius),
                                         ),
                                       ),
                                       if (query.isNotEmpty) ...[
@@ -816,6 +806,12 @@ class _UsersScreenState extends State<UsersScreen> {
         .toList();
     final isMultiBureau = agencyCodes.length > 1;
     final hasAppInstalled = ((data['fcmToken'] as String?) ?? '').isNotEmpty;
+    // Written by MarketingConsentDialog straight onto users/{uid}
+    // (backpack/lib/services/user_profile.dart) — absent means never
+    // asked (or asked while the bureau had it disabled), which defaults
+    // to "Nej" here: no explicit opt-in on record is the standard,
+    // GDPR-safe default, not an unknown state.
+    final emailMarketingConsent = data['marketingConsent'] as bool? ?? false;
     final groupIds = _groupIdsForUser(data);
 
     Widget buildTile(String displayName, List<String> groupNames) {
@@ -824,17 +820,22 @@ class _UsersScreenState extends State<UsersScreen> {
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: AppShadows.card,
-          ),
+          decoration: _panelDecoration(widget.mainColor),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: widget.mainColor.withValues(alpha: 0.12),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      widget.mainColor.withValues(alpha: 0.22),
+                      widget.mainColor.withValues(alpha: 0.08),
+                    ],
+                  ),
+                ),
                 child: Icon(Icons.luggage, color: widget.mainColor),
               ),
               const SizedBox(width: 14),
@@ -874,6 +875,17 @@ class _UsersScreenState extends State<UsersScreen> {
                           _infoChip(Icons.apartment_outlined,
                               'Rejser også med et andet bureau',
                               color: Colors.orange),
+                        _infoChip(
+                          emailMarketingConsent
+                              ? Icons.mark_email_read_outlined
+                              : Icons.unsubscribe_outlined,
+                          emailMarketingConsent
+                              ? 'Email marketing: Ja'
+                              : 'Email marketing: Nej',
+                          color: emailMarketingConsent
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
                       ],
                     ),
                   ],
@@ -1131,3 +1143,95 @@ class _UserSearchEntry {
 }
 
 enum _AppInstallSort { none, installedFirst, notInstalledFirst }
+
+// Soft gradient-tinted panel with a colored glow shadow instead of a flat
+// gray card — same look as AppScreen's _panelDecoration (app_screen.dart),
+// kept screen-local like every other copy of this in the app.
+BoxDecoration _panelDecoration(Color themeColor) {
+  return BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white,
+        Color.alphaBlend(themeColor.withValues(alpha: 0.035), Colors.white),
+      ],
+    ),
+    borderRadius: BorderRadius.circular(22),
+    border: Border.all(color: themeColor.withValues(alpha: 0.10)),
+    boxShadow: [
+      BoxShadow(
+        color: themeColor.withValues(alpha: 0.12),
+        blurRadius: 28,
+        offset: const Offset(0, 14),
+        spreadRadius: -10,
+      ),
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.03),
+        blurRadius: 6,
+        offset: const Offset(0, 2),
+      ),
+    ],
+  );
+}
+
+// A hand-built pill toggle (not the stock Material Switch) — same look as
+// AppScreen's _GlowSwitch (app_screen.dart): a colored glow halo behind the
+// track when ON, and an animated sliding thumb.
+class _GlowSwitch extends StatelessWidget {
+  const _GlowSwitch({
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Color color;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final darker = Color.lerp(color, Colors.black, 0.15)!;
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        width: 46,
+        height: 27,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: value ? null : Colors.grey[300],
+          gradient: value ? LinearGradient(colors: [color, darker]) : null,
+          boxShadow: value
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.45),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : const [],
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 21,
+            height: 21,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

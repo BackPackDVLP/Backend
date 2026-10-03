@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/models/coupon_model.dart';
+import 'package:backend/models/agencyInformation.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -23,6 +24,10 @@ class _MapBackfillPlan {
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
   final GroupInformationRepository repository;
+  // Needed only to read the bureau-wide affiliate links (agencyInfo.coupons)
+  // so this screen can show them alongside the trip's own — they're managed
+  // from the App-settings screen, not editable here.
+  final AgencyInformation agencyInfo;
   // Whether the signed-in staff member's role grants `trips.edit`. Unlike
   // homescreen.dart's per-row edit icons, this whole screen is a single
   // form with one save action — rather than gating ~15 individual fields,
@@ -34,6 +39,7 @@ class GroupDetailsScreen extends StatefulWidget {
     super.key,
     required this.groupId,
     required this.repository,
+    required this.agencyInfo,
     this.canEditTrips = true,
   });
 
@@ -385,7 +391,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                     color: AppColors.darkGreen),
                 const SizedBox(width: AppSpacing.md),
                 Text(
-                  existingCoupon == null ? 'Tilføj Kupon' : 'Rediger Kupon',
+                  existingCoupon == null
+                      ? 'Tilføj affiliate link'
+                      : 'Rediger affiliate link',
                   style: GoogleFonts.kanit(
                       fontWeight: FontWeight.bold, fontSize: 22),
                 ),
@@ -449,7 +457,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   _buildDialogField(
                     controller: linkController,
                     label: 'Link',
-                    hint: 'Hvor skal kuponen føre hen?',
+                    hint: 'Hvor skal linket føre hen?',
                     icon: Icons.link,
                   ),
                 ],
@@ -789,16 +797,37 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                   ],
                 );
 
+                final agencyCoupons = widget.agencyInfo.coupons;
+                final groupCoupons = _group!.coupons ?? [];
                 final couponsSection = _buildSectionCard(
-                  title: 'Kuponer',
+                  title: 'Affiliate links',
                   icon: Icons.local_offer,
                   action: _buildAddChip(onTap: () => _addOrEditCoupon()),
                   children: [
-                    if (_group!.coupons == null || _group!.coupons!.isEmpty)
-                      _buildEmptyRow('Ingen kuponer tilføjet endnu')
-                    else
-                      ..._group!.coupons!
-                          .map((coupon) => _buildCouponTile(coupon)),
+                    if (agencyCoupons.isEmpty && groupCoupons.isEmpty)
+                      _buildEmptyRow('Ingen affiliate links tilføjet endnu')
+                    else ...[
+                      if (agencyCoupons.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, bottom: 2),
+                          child: Text('Fra bureauet',
+                              style: AppTextStyles.caption()),
+                        ),
+                        ...agencyCoupons.map(
+                            (coupon) => _buildCouponTile(coupon, isEditable: false)),
+                      ],
+                      if (groupCoupons.isNotEmpty) ...[
+                        Padding(
+                          padding: EdgeInsets.only(
+                              top: agencyCoupons.isNotEmpty ? 12 : 4,
+                              bottom: 2),
+                          child: Text('For denne rejse',
+                              style: AppTextStyles.caption()),
+                        ),
+                        ...groupCoupons
+                            .map((coupon) => _buildCouponTile(coupon)),
+                      ],
+                    ],
                   ],
                 );
 
@@ -1115,7 +1144,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     );
   }
 
-  Widget _buildCouponTile(Coupon coupon) {
+  Widget _buildCouponTile(Coupon coupon, {bool isEditable = true}) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
@@ -1162,46 +1191,61 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             ),
           ),
         ),
-        trailing: Container(
-          decoration: BoxDecoration(
-            color: AppColors.beige,
-            shape: BoxShape.circle,
-          ),
-          child: PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black54),
-            shape:
-                RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-            onSelected: (value) {
-              if (value == 'edit') {
-                _addOrEditCoupon(existingCoupon: coupon);
-              } else if (value == 'delete') {
-                _deleteCoupon(coupon);
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 20, color: AppColors.darkGreen),
-                    const SizedBox(width: AppSpacing.md),
-                    Text('Rediger', style: GoogleFonts.kanit()),
+        trailing: isEditable
+            ? Container(
+                decoration: BoxDecoration(
+                  color: AppColors.beige,
+                  shape: BoxShape.circle,
+                ),
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.black54),
+                  shape:
+                      RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
+                  onSelected: (value) {
+                    if (value == 'edit') {
+                      _addOrEditCoupon(existingCoupon: coupon);
+                    } else if (value == 'delete') {
+                      _deleteCoupon(coupon);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, size: 20, color: AppColors.darkGreen),
+                          const SizedBox(width: AppSpacing.md),
+                          Text('Rediger', style: GoogleFonts.kanit()),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.delete,
+                              size: 20, color: Colors.redAccent),
+                          const SizedBox(width: AppSpacing.md),
+                          Text('Slet', style: GoogleFonts.kanit()),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    const Icon(Icons.delete, size: 20, color: Colors.redAccent),
-                    const SizedBox(width: AppSpacing.md),
-                    Text('Slet', style: GoogleFonts.kanit()),
-                  ],
+              )
+            : Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.beige,
+                  borderRadius: AppRadii.smRadius,
                 ),
+                child: Text('Bureau',
+                    style: GoogleFonts.kanit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkGreen)),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }
