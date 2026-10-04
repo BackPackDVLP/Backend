@@ -33,6 +33,8 @@ import '../../widget/timeline_map_overview_dialog.dart';
 import '../../widget/departurebox2.dart';
 import '../../widget/returnbox2.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
+import 'package:backend/widget/app_snackbar.dart';
+import 'package:backend/widget/message_composer_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   static const String routeName = '/home';
@@ -224,106 +226,68 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pickAndUploadDocument(BuildContext context) async {
-    if (_currentDocsRef == null) return;
-    print("Upload button pressed");
+    final folder = _currentDocsRef;
+    if (folder == null) return;
 
     try {
-      // Open file picker to select a PDF
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
+        allowMultiple: true,
         withData: true,
       );
+      final files =
+          result?.files.where((f) => f.bytes != null).toList() ?? const [];
+      if (files.isEmpty || !context.mounted) return;
 
-      if (result != null) {
-        String fileName = result.files.single.name;
-        final fileBytes = result.files.single.bytes;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => _UploadConfirmDialog(files: files),
+      );
+      if (confirmed != true || !context.mounted) return;
 
-        if (!mounted) return;
-
-        final confirmed = await showDialog<bool>(
-          // Use the captured context
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              backgroundColor:
-                  AppColors.uploadDialogBackground, // Background color
-              title: Text(
-                "Upload filer",
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.picture_as_pdf, size: 48, color: Colors.red),
-                  const SizedBox(height: 10),
-                  Text(
-                    "Vil du uploade denne fil?",
-                    style: const TextStyle(fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    fileName,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-              actions: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.uploadDialogButton,
-                      ),
-                      child: Text(
-                        "Annuller",
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.uploadDialogButton,
-                      ),
-                      child: Text(
-                        "Upload",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        );
-
-        // If user confirms, proceed with upload
-        if (confirmed == true) {
-          Reference storageRef = _currentDocsRef!.child(fileName);
-          if (fileBytes != null) {
-            UploadTask uploadTask = storageRef.putData(fileBytes);
-            await uploadTask;
-            _fetchDocuments(); // Refresh file list
-          }
-        } else {
-          print("Upload canceled.");
-        }
-      } else {
-        print("No file selected.");
-      }
+      await _uploadDocuments(context, folder, files);
     } catch (e) {
-      print("Error uploading file: $e");
+      if (context.mounted) {
+        showErrorSnackbar(context, 'Fejl ved upload: ${describeError(e)}');
+      }
+    }
+  }
+
+  /// Uploads every picked PDF into [folder] in parallel, then refreshes the
+  /// list once. One failing file doesn't stop the rest — the snackbar says
+  /// how many made it.
+  Future<void> _uploadDocuments(
+    BuildContext context,
+    Reference folder,
+    List<PlatformFile> files,
+  ) async {
+    if (files.length > 1) {
+      showInfoSnackbar(context, 'Uploader ${files.length} dokumenter...');
+    }
+    final results = await Future.wait(files.map((file) async {
+      try {
+        await folder.child(file.name).putData(file.bytes!);
+        return true;
+      } catch (e) {
+        print('Error uploading ${file.name}: $e');
+        return false;
+      }
+    }));
+    _fetchDocuments();
+
+    if (!context.mounted) return;
+    final failed = results.where((ok) => !ok).length;
+    final uploaded = files.length - failed;
+    if (failed == 0) {
+      showAppSnackbar(
+          context,
+          uploaded == 1
+              ? '${files.single.name} uploadet'
+              : '$uploaded dokumenter uploadet');
+    } else {
+      showErrorSnackbar(context,
+          '$failed af ${files.length} dokumenter kunne ikke uploades');
     }
   }
 
@@ -343,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Icon(Icons.create_new_folder, size: 48, color: Colors.grey),
             const SizedBox(height: AppSpacing.lg),
             const Text(
-              'For at oprette en mappe skal du uploade mindst én fil til den.',
+              'For at oprette en mappe skal du uploade mindst én fil til den. Du kan vælge flere filer på én gang.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
@@ -377,38 +341,29 @@ class _HomeScreenState extends State<HomeScreen> {
               if (folderName.trim().isNotEmpty) {
                 Navigator.pop(context);
                 try {
-                  FilePickerResult? result =
-                      await FilePicker.platform.pickFiles(
+                  final result = await FilePicker.platform.pickFiles(
                     type: FileType.custom,
                     allowedExtensions: ['pdf'],
+                    allowMultiple: true,
                     withData: true,
                   );
-
-                  if (result != null) {
-                    String fileName = result.files.single.name;
-                    Reference storageRef = _currentDocsRef!
-                        .child(folderName.trim())
-                        .child(fileName);
-
-                    if (result.files.single.bytes != null) {
-                      UploadTask uploadTask =
-                          storageRef.putData(result.files.single.bytes!);
-                      await uploadTask;
-                      _fetchDocuments();
-                    }
+                  final files = result?.files
+                          .where((f) => f.bytes != null)
+                          .toList() ??
+                      const <PlatformFile>[];
+                  if (files.isNotEmpty && mounted) {
+                    await _uploadDocuments(this.context,
+                        _currentDocsRef!.child(folderName.trim()), files);
                   }
                 } catch (e) {
                   print('Error creating folder: $e');
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('Fejl ved oprettelse af mappe: $e')),
-                    );
+                    showErrorSnackbar(context, 'Fejl ved oprettelse af mappe: ${describeError(e)}');
                   }
                 }
               }
             },
-            child: const Text('Vælg fil & opret'),
+            child: const Text('Vælg filer & opret'),
           ),
         ],
       ),
@@ -1195,11 +1150,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Positioned(
             bottom: 16,
             right: 16,
-            child: FloatingActionButton(
+            child: FloatingActionButton.extended(
               heroTag: 'messages_fab_${groupInfo.groupId}',
               onPressed: () => _showCreateMessageDialog(context, groupInfo),
               backgroundColor: AppColors.primary,
-              child: Icon(Icons.add, color: AppColors.onPrimary),
+              foregroundColor: AppColors.onPrimary,
+              icon: const Icon(Icons.edit_outlined),
+              label: Text('Ny besked',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w600)),
             ),
           ),
         ],
@@ -1238,14 +1196,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _deleteDocument(Reference pdfFile) async {
     try {
       await pdfFile.delete();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dokument slettet.')),
-      );
+      showAppSnackbar(context, 'Dokument slettet.');
       _fetchDocuments(); // Refresh the list
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fejl ved sletning af dokument: $e')),
-      );
+      showErrorSnackbar(context, 'Fejl ved sletning af dokument: ${describeError(e)}');
     }
   }
 
@@ -1284,16 +1238,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 try {
                   await _deleteFolderRecursive(folder);
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Mappe slettet.')),
-                    );
+                    showAppSnackbar(context, 'Mappe slettet.');
                   }
                   _fetchDocuments(); // Refresh the list
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Fejl ved sletning af mappe: $e')),
-                    );
+                    showErrorSnackbar(context, 'Fejl ved sletning af mappe: ${describeError(e)}');
                   }
                 }
               },
@@ -1350,17 +1300,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   try {
                     await _moveFolderContents(folder, newFolderRef);
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Mappe omdøbt.')),
-                      );
+                      showAppSnackbar(context, 'Mappe omdøbt.');
                     }
                     _fetchDocuments();
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Fejl ved omdøbning af mappe: $e')),
-                      );
+                      showErrorSnackbar(context, 'Fejl ved omdøbning af mappe: ${describeError(e)}');
                     }
                   }
                 }
@@ -1389,9 +1334,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print("Error fetching all documents recursively: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fejl ved hentning af dokumenter: $e')),
-        );
+        showErrorSnackbar(context, 'Fejl ved hentning af dokumenter: ${describeError(e)}');
       }
     }
     return allFiles;
@@ -1553,103 +1496,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- CREATE / EDIT / DELETE MESSAGE ---
   void _showCreateMessageDialog(
-      BuildContext context, GroupInformation groupInfo) {
-    String title = '', content = '';
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.dialogAltBackground,
-        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
-        title: Text('Ny besked', style: const TextStyle(fontSize: 21)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: const InputDecoration(hintText: 'Titel'),
-              onChanged: (v) => title = v,
-            ),
-            TextField(
-              decoration: const InputDecoration(hintText: 'Besked'),
-              onChanged: (v) => content = v,
-              maxLines: null,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuller')),
-          ElevatedButton(
-            onPressed: () {
-              if (title.isNotEmpty && content.isNotEmpty) {
-                final admin = FirebaseAuth.instance.currentUser;
-                context.read<GroupInformationRepository>().createMessage(
-                      groupInfo.groupId,
-                      title,
-                      content,
-                      admin?.uid ?? 'admin',
-                      admin?.displayName ?? admin?.email ?? 'Admin',
-                      isAdmin: true,
-                      bureauName: groupInfo.bureauName,
-                    );
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-  }
+          BuildContext context, GroupInformation groupInfo) =>
+      showMessageComposer(context, group: groupInfo);
 
   void _showEditMessageDialog(
-      BuildContext context, GroupInformation groupInfo, Message message) {
-    String title = message.title;
-    String content = message.content;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.dialogAltBackground,
-        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
-        title: Text('Rediger besked', style: const TextStyle(fontSize: 21)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: const InputDecoration(hintText: 'Titel'),
-              controller: TextEditingController(text: title),
-              onChanged: (v) => title = v,
-            ),
-            TextField(
-              decoration: const InputDecoration(hintText: 'Besked'),
-              controller: TextEditingController(text: content),
-              onChanged: (v) => content = v,
-              maxLines: null,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuller')),
-          ElevatedButton(
-            onPressed: () {
-              if (title.isNotEmpty && content.isNotEmpty) {
-                context.read<GroupInformationRepository>().updateMessage(
-                      groupInfo.groupId, // This was missing
-                      message.id,
-                      title,
-                      content,
-                    );
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Gem'),
-          ),
-        ],
-      ),
-    );
-  }
+          BuildContext context, GroupInformation groupInfo, Message message) =>
+      showMessageComposer(context, group: groupInfo, existing: message);
 
   void _removeMessage(BuildContext context, String groupId, Message message) {
     showDialog(
@@ -1723,10 +1575,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Du skal være logget ind for at sende e-mail')),
-      );
+      showWarningSnackbar(context, 'Du skal være logget ind for at sende e-mail');
       return;
     }
 
@@ -1780,15 +1629,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
             Future<void> handleSend() async {
               if (selectedEmails.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Vælg mindst én modtager')),
-                );
+                showWarningSnackbar(context, 'Vælg mindst én modtager');
                 return;
               }
               if (subjectController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Emne mangler')),
-                );
+                showWarningSnackbar(context, 'Emne mangler');
                 return;
               }
 
@@ -1848,21 +1693,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (!context.mounted) return;
 
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('E-mail sendt')),
-                );
+                showAppSnackbar(context, 'E-mail sendt');
               } on FirebaseFunctionsException catch (e) {
                 setState(() => isSending = false);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.message ?? 'Kunne ikke sende e-mail')),
-                  );
+                  showErrorSnackbar(context, e.message ?? 'Kunne ikke sende e-mail');
                 }
               } catch (e) {
                 setState(() => isSending = false);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text('Fejl: $e')));
+                  showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
                 }
               }
             }
@@ -2365,8 +2205,7 @@ class _HomeScreenState extends State<HomeScreen> {
             } catch (e) {
               setState(() => isUploading = false);
               if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text('Kunne ikke uploade billede: $e')));
+                showErrorSnackbar(context, 'Kunne ikke uploade billede: ${describeError(e)}');
               }
             }
           }
@@ -2544,8 +2383,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                                 } catch (e) {
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Kunne ikke gemme signatur: $e')));
+                                    showErrorSnackbar(context, 'Kunne ikke gemme signatur: ${describeError(e)}');
                                   }
                                 }
                               },
@@ -3188,19 +3026,14 @@ class _HomeScreenState extends State<HomeScreen> {
             } on FirebaseAuthException catch (e) {
               if (!dialogContext.mounted) return;
               if (e.code == 'email-already-in-use') {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(
-                    content: Text(
-                        'Brugeren findes allerede og tilføjes til gruppen.')));
+                showInfoSnackbar(dialogContext, 'Brugeren findes allerede og tilføjes til gruppen.');
               } else {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
-                    content: Text(
-                        'Fejl ved oprettelse af bruger: ${e.message}')));
+                showErrorSnackbar(dialogContext, 'Fejl ved oprettelse af bruger: ${e.message}');
                 return; // Stop if user creation fails
               }
             } catch (e) {
               if (!dialogContext.mounted) return;
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(content: Text('En uventet fejl opstod: $e')));
+              showErrorSnackbar(dialogContext, 'En uventet fejl opstod: ${describeError(e)}');
               return; // Stop on other errors
             } finally {
               await tempApp?.delete();
@@ -3773,8 +3606,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Kunne ikke hente bibliotek: $e')));
+        showErrorSnackbar(context, 'Kunne ikke hente bibliotek: ${describeError(e)}');
       }
       return;
     }
@@ -3782,8 +3614,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!context.mounted) return;
 
     if (library.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Biblioteket er tomt')));
+      showInfoSnackbar(context, 'Biblioteket er tomt');
       return;
     }
 
@@ -4060,10 +3891,112 @@ void openPdf(BuildContext context, String pdfUrl) {
   launchUrl(Uri.parse(pdfUrl));
 
   // Show a snackbar message
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('PDF opened in a new tab'),
-      duration: Duration(seconds: 3),
-    ),
-  );
+  showInfoSnackbar(context, 'PDF opened in a new tab', duration: const Duration(seconds: 3));
+}
+
+/// Confirms a document upload — lists every picked PDF with its size so
+/// a multi-file pick can be checked before anything is sent.
+class _UploadConfirmDialog extends StatelessWidget {
+  const _UploadConfirmDialog({required this.files});
+
+  final List<PlatformFile> files;
+
+  static String _formatSize(int bytes) {
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final single = files.length == 1;
+    final totalBytes = files.fold<int>(0, (sum, f) => sum + f.size);
+    return AlertDialog(
+      backgroundColor: AppColors.uploadDialogBackground,
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+      title: Text(
+        single ? 'Upload fil' : 'Upload ${files.length} filer',
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        textAlign: TextAlign.center,
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              single
+                  ? 'Vil du uploade denne fil?'
+                  : 'Vil du uploade disse filer? (${_formatSize(totalBytes)} i alt)',
+              style: const TextStyle(fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: files.length,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: AppSpacing.xs),
+                itemBuilder: (context, index) {
+                  final file = files[index];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: AppRadii.smRadius,
+                      border: Border.all(color: Colors.grey[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.picture_as_pdf,
+                            size: 22, color: Colors.red),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            file.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(_formatSize(file.size),
+                            style: AppTextStyles.caption()),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.uploadDialogButton,
+              ),
+              child: const Text('Annuller', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.uploadDialogButton,
+              ),
+              child: Text(
+                single ? 'Upload' : 'Upload alle',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }

@@ -9,6 +9,7 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import 'package:url_launcher/url_launcher.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:backend/widget/coupon.dart' as CouponWidget;
+import 'package:backend/widget/app_snackbar.dart';
 
 class PackingListScreen extends StatefulWidget {
   final ScrollController scrollController;
@@ -193,10 +194,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                         if (await canLaunchUrl(url)) {
                                           await launchUrl(url);
                                         } else {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(const SnackBar(
-                                                  content: Text(
-                                                      'Could not launch URL')));
+                                          showErrorSnackbar(context, 'Could not launch URL');
                                         }
                                       },
                                     ),
@@ -239,10 +237,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                         if (await canLaunchUrl(url)) {
                                           await launchUrl(url);
                                         } else {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(const SnackBar(
-                                                  content: Text(
-                                                      'Could not launch URL')));
+                                          showErrorSnackbar(context, 'Could not launch URL');
                                         }
                                       },
                                     ),

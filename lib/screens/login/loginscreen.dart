@@ -3,6 +3,7 @@ import 'package:backend/config/design.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 class LoginScreen extends StatefulWidget {
   static const String routeName = '/login';
@@ -67,14 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await FirebaseAuth.instance.signOut();
           if (!mounted) return;
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Your email is not verified. Please contact BackPack, if the user should be verified for the admin panel.',
-              ),
-              duration: Duration(seconds: 5),
-            ),
-          );
+          showWarningSnackbar(context, 'Your email is not verified. Please contact BackPack, if the user should be verified for the admin panel.');
           setState(() {
             _isLoading = false;
           });
@@ -100,9 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
-      );
+      showErrorSnackbar(context, errorMessage);
     } finally {
       if (mounted) {
         setState(() {

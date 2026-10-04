@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 class _AgencyOption {
   final String code;
@@ -68,12 +69,8 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
       // Check if the user's email is verified.
       if (!user.emailVerified) {
         // If not verified, show a message, sign out, and redirect to login.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bekræft venligst din email for at logge ind.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
+        showWarningSnackbar(
+            context, 'Bekræft venligst din email for at logge ind.');
         await FirebaseAuth.instance.signOut();
         // Add a small delay for the user to see the snackbar.
         await Future.delayed(const Duration(seconds: 1));
@@ -210,9 +207,7 @@ class _GroupIDScreenState extends State<GroupIDScreen> {
                 // resolved but loading its groups failed.
                 if (!mounted) return;
                 setState(() => _accessDenied = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(state.message)),
-                );
+                showErrorSnackbar(context, state.message);
               }
             }
           },

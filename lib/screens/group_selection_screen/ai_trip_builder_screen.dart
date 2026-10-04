@@ -12,6 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// "Build a trip from documents" — a bureau uploads flight tickets, hotel
 /// confirmations etc. (plus an explicit start/end date and, optionally,
@@ -184,17 +185,12 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
       }
       if (_pickedFiles.length > _maxFiles) {
         _pickedFiles.removeRange(_maxFiles, _pickedFiles.length);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Højst $_maxFiles filer ad gangen')),
-        );
+        showWarningSnackbar(context, 'Højst $_maxFiles filer ad gangen');
       }
     });
     if (skippedForSize && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'PDF\'er og billeder må samlet fylde højst ${_maxInlineBytes ~/ (1024 * 1024)} MB — nogle filer blev ikke tilføjet')),
-      );
+      showWarningSnackbar(context,
+          'PDF\'er og billeder må samlet fylde højst ${_maxInlineBytes ~/ (1024 * 1024)} MB — nogle filer blev ikke tilføjet');
     }
   }
 
@@ -460,8 +456,7 @@ class _AiTripBuilderScreenState extends State<AiTripBuilderScreen> {
       _fields.firstWhere((f) => f.label == label).controller.text.trim();
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    showErrorSnackbar(context, message);
   }
 
   Future<void> _pickReviewDate({required bool isDeparture}) async {

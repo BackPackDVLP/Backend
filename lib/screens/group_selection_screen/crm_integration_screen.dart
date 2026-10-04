@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// HubSpot CRM integration wizard (generically CRM-labeled — the shell is
 /// meant to outlive HubSpot as the only supported backend). Connect (OAuth)
@@ -706,18 +707,15 @@ class _CrmIntegrationScreenState extends State<CrmIntegrationScreen> {
         _contactProperties = [];
         _pipelines = [];
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Forbindelsen er afbrudt')));
+      showAppSnackbar(context, 'Forbindelsen er afbrudt');
     } on FirebaseFunctionsException catch (e) {
       if (!mounted) return;
       setState(() => _isDisconnecting = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.message ?? 'Kunne ikke afbryde forbindelsen')));
+      showErrorSnackbar(context, e.message ?? 'Kunne ikke afbryde forbindelsen');
     } catch (e) {
       if (!mounted) return;
       setState(() => _isDisconnecting = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Der skete en fejl')));
+      showErrorSnackbar(context, 'Der skete en fejl');
     }
   }
 

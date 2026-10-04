@@ -12,6 +12,7 @@ import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_ti
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// Lets an admin see every timeline event's resolved location on a single
 /// map and fix the ones that are missing or plain wrong (e.g. geocoded to
@@ -108,9 +109,7 @@ class _TimelineMapOverviewDialogState
       print('Error saving timeline locations: $e');
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kunne ikke gemme ændringer')),
-        );
+        showErrorSnackbar(context, 'Kunne ikke gemme ændringer');
       }
     }
   }

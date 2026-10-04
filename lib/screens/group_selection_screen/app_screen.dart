@@ -17,6 +17,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// Sidebar "App" screen: a big, phone-framed live preview of how the app
 /// looks for this bureau, with a small editor for the controls that drive
@@ -300,8 +301,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl: $e')));
+        showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
       }
     }
   }
@@ -610,8 +610,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     } catch (e) {
       setState(() => _isUploadingLogo = false);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl ved upload: $e')));
+        showErrorSnackbar(context, 'Fejl ved upload: ${describeError(e)}');
       }
     }
   }
@@ -648,8 +647,7 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     } catch (e) {
       setState(() => _isUploadingContrastLogo = false);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl ved upload: $e')));
+        showErrorSnackbar(context, 'Fejl ved upload: ${describeError(e)}');
       }
     }
   }
@@ -704,8 +702,8 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
     } catch (e) {
       if (mounted) {
         setState(() => _isUploadingVideo = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Fejl ved upload af video: $e')));
+        showErrorSnackbar(
+            context, 'Fejl ved upload af video: ${describeError(e)}');
       }
     }
   }
@@ -748,8 +746,8 @@ class _AppSettingsEditorState extends State<_AppSettingsEditor> {
       } catch (e) {
         if (mounted) {
           setState(() => _isUploadingVideo = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Kunne ikke slette video: $e')));
+          showErrorSnackbar(
+              context, 'Kunne ikke slette video: ${describeError(e)}');
         }
       }
     }

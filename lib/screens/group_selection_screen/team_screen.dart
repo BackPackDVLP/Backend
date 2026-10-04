@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// Agency-scoped view of the admin employees who can log in to this
 /// control panel for this bureau, plus the bureau's custom roles.
@@ -158,9 +159,7 @@ class _TeamScreenState extends State<TeamScreen> {
     );
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invitation sendt')),
-      );
+      showAppSnackbar(context, 'Invitation sendt');
     }
   }
 
@@ -202,9 +201,7 @@ class _TeamScreenState extends State<TeamScreen> {
     );
 
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Medarbejder opdateret')),
-      );
+      showAppSnackbar(context, 'Medarbejder opdateret');
     }
   }
 
@@ -236,15 +233,12 @@ class _TeamScreenState extends State<TeamScreen> {
           .httpsCallable('removeEmployee')
           .call({'uid': uid, 'agencyCode': widget.agencyCode});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Medarbejder fjernet')),
-        );
+        showAppSnackbar(context, 'Medarbejder fjernet');
       }
     } on FirebaseFunctionsException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Kunne ikke fjerne medarbejder')),
-        );
+        showErrorSnackbar(
+            context, e.message ?? 'Kunne ikke fjerne medarbejder');
       }
     }
   }
@@ -259,15 +253,11 @@ class _TeamScreenState extends State<TeamScreen> {
         'roleId': roleId,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rolle opdateret')),
-        );
+        showAppSnackbar(context, 'Rolle opdateret');
       }
     } on FirebaseFunctionsException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Kunne ikke tildele rolle')),
-        );
+        showErrorSnackbar(context, e.message ?? 'Kunne ikke tildele rolle');
       }
     }
   }
@@ -404,11 +394,8 @@ class _TeamScreenState extends State<TeamScreen> {
     );
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content:
-                Text(existing == null ? 'Rolle oprettet' : 'Rolle opdateret')),
-      );
+      showAppSnackbar(
+          context, existing == null ? 'Rolle oprettet' : 'Rolle opdateret');
     }
   }
 
@@ -440,15 +427,11 @@ class _TeamScreenState extends State<TeamScreen> {
           .httpsCallable('deleteAgencyRole')
           .call({'agencyCode': widget.agencyCode, 'roleId': role.id});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rolle slettet')),
-        );
+        showAppSnackbar(context, 'Rolle slettet');
       }
     } on FirebaseFunctionsException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Kunne ikke slette rollen')),
-        );
+        showErrorSnackbar(context, e.message ?? 'Kunne ikke slette rollen');
       }
     }
   }

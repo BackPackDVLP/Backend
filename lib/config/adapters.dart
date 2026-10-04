@@ -15,27 +15,57 @@ class GroupInformationAdapter extends TypeAdapter<GroupInformation> {
 
   @override
   GroupInformation read(BinaryReader reader) {
-    // Implement reading logic based on your model's properties
-    // ...
+    final groupId = reader.readString();
+    final id = reader.readString();
+    final departureDate = reader.read() as DateTime;
+    final returnDate = reader.read() as DateTime;
+    final departureFrom = reader.readString();
+    final returnTo = reader.readString();
+    final members = (reader.readList()).cast<GroupMember>();
+    final guides = (reader.readList()).cast<Guide>();
+    final timelineEvents = (reader.readList()).cast<TimelineEvent>();
+    final packinglistCategories =
+        (reader.readList()).cast<PackinglistCategories>();
+    final agencyCode = reader.readString();
+    final flights = (reader.readList() as List?)?.cast<FlightModel>();
+    final emergencyPhone = reader.readString();
+    final bureauName = reader.readString();
+    final coupons = (reader.readList() as List?)?.cast<Coupon>();
+    final flightHome = reader.readBool();
+    final flightAway = reader.readBool();
+    final messages = (reader.readList() as List?)?.cast<Message>();
+    // Appended later — entries cached before these existed simply end
+    // here, so only read them when there are bytes left.
+    final hasExtras = reader.availableBytes > 0;
+    final groupName = hasExtras ? reader.read() as String? : null;
+    final isTemplate = hasExtras ? reader.read() as bool? : null;
+    final beforeDepartureItems =
+        hasExtras ? (reader.read() as List?)?.cast<String>() : null;
+    final mapEnabled = hasExtras ? reader.readBool() : false;
+
     return GroupInformation(
-      groupId: reader.readString(),
-      id: reader.readString(),
-      departureDate: reader.read() as DateTime,
-      returnDate: reader.read() as DateTime,
-      departureFrom: reader.readString(),
-      returnTo: reader.readString(),
-      members: (reader.readList()).cast<GroupMember>(),
-      guides: (reader.readList()).cast<Guide>(),
-      timelineEvents: (reader.readList()).cast<TimelineEvent>(),
-      packinglistCategories: (reader.readList()).cast<PackinglistCategories>(),
-      agencyCode: reader.readString(),
-      flights: (reader.readList() as List?)?.cast<FlightModel>(),
-      emergencyPhone: reader.readString(),
-      bureauName: reader.readString(),
-      coupons: (reader.readList() as List?)?.cast<Coupon>(),
-      flightHome: reader.readBool(),
-      flightAway: reader.readBool(),
-      messages: (reader.readList() as List?)?.cast<Message>(),
+      groupId: groupId,
+      id: id,
+      departureDate: departureDate,
+      returnDate: returnDate,
+      departureFrom: departureFrom,
+      returnTo: returnTo,
+      members: members,
+      guides: guides,
+      timelineEvents: timelineEvents,
+      packinglistCategories: packinglistCategories,
+      agencyCode: agencyCode,
+      flights: flights,
+      emergencyPhone: emergencyPhone,
+      bureauName: bureauName,
+      coupons: coupons,
+      flightHome: flightHome,
+      flightAway: flightAway,
+      messages: messages,
+      groupName: groupName,
+      isTemplate: isTemplate,
+      beforeDepartureItems: beforeDepartureItems,
+      mapEnabled: mapEnabled,
     );
   }
 
@@ -60,6 +90,10 @@ class GroupInformationAdapter extends TypeAdapter<GroupInformation> {
     writer.writeBool(obj.flightHome);
     writer.writeBool(obj.flightAway);
     writer.writeList(obj.messages ?? []);
+    writer.write(obj.groupName);
+    writer.write(obj.isTemplate);
+    writer.write(obj.beforeDepartureItems);
+    writer.writeBool(obj.mapEnabled);
   }
 }
 

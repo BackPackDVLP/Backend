@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:backend/config/design.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:backend/config/app_colors.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,7 @@ import 'package:backend/models/coupon_model.dart';
 import 'package:backend/models/agencyInformation.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 class _MapBackfillPlan {
   final List<Map<String, dynamic>> events;
@@ -64,6 +66,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   bool _mapEnabledAtLoad = false;
   bool _backfillingMapLocations = false;
   List<String> _beforeDepartureItems = [];
+  final _newPreDepartureController = TextEditingController();
+  final _newPreDepartureFocus = FocusNode();
+  final _editPreDepartureController = TextEditingController();
+  int? _editingPreDepartureIndex;
 
   @override
   void initState() {
@@ -71,11 +77,39 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     _loadGroup();
   }
 
+  @override
+  void dispose() {
+    _departureDateController.dispose();
+    _returnDateController.dispose();
+    _departureFromController.dispose();
+    _returnToController.dispose();
+    _emergencyPhoneController.dispose();
+    _newPreDepartureController.dispose();
+    _newPreDepartureFocus.dispose();
+    _editPreDepartureController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadGroup() async {
-    // Use .first to treat the stream like a future for a one-time load.
-    // This prevents setState calls after the widget is disposed if the user navigates away.
-    final group =
-        await widget.repository.getGroupInformation(widget.groupId).first;
+    // Read straight from Firestore, not repository.getGroupInformation():
+    // that stream yields the Hive-cached copy first, which can be stale or
+    // lossy — and since this screen writes whole fields back (the "Før
+    // afrejse" list, mapEnabled, coupons), editing on top of a stale copy
+    // silently overwrote what was actually saved.
+    final GroupInformation group;
+    try {
+      final snapshot = await widget.repository.firestore
+          .collection('groups')
+          .doc(widget.groupId)
+          .get();
+      group = GroupInformation.fromSnapshot(snapshot);
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackbar(
+            context, 'Kunne ikke hente rejsen: ${describeError(e)}');
+      }
+      return;
+    }
     if (!mounted) return;
 
     setState(() {
@@ -140,8 +174,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       _mapEnabledAtLoad = _mapEnabled;
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Details saved')));
+        showAppSnackbar(context, 'Details saved');
       }
 
       // The map was just switched on — backfill coordinates for every
@@ -156,8 +189,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error saving details: $e')));
+        showErrorSnackbar(context, 'Error saving details: ${describeError(e)}');
       }
     }
   }
@@ -204,13 +236,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     setState(() => _backfillingMapLocations = true);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Finder placeringer for ${plan.toGeocode.length} begivenheder...'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      showInfoSnackbar(context, 'Finder placeringer for ${plan.toGeocode.length} begivenheder...', duration: const Duration(seconds: 3));
     }
 
     var resolvedCount = 0;
@@ -252,12 +278,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     if (mounted) {
       setState(() => _backfillingMapLocations = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Kort: fandt placering for $resolvedCount af ${plan.toGeocode.length} begivenheder'),
-        ),
-      );
+      showInfoSnackbar(context, 'Kort: fandt placering for $resolvedCount af ${plan.toGeocode.length} begivenheder');
     } else {
       _backfillingMapLocations = false;
     }
@@ -279,11 +300,9 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
     if (plan.toGeocode.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(plan.customCount > 0
+        showInfoSnackbar(context, plan.customCount > 0
               ? 'Alle begivenheder har allerede en placering (${plan.customCount} har en specifik adresse og røres ikke).'
-              : 'Alle begivenheder har allerede en placering.'),
-        ));
+              : 'Alle begivenheder har allerede en placering.');
       }
       return;
     }
@@ -592,77 +611,95 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     });
   }
 
+  // Common checklist points offered as one-tap suggestions — only the ones
+  // not already on the list are shown.
+  static const _preDepartureSuggestions = [
+    'Husk pas',
+    'Tjek at passet er gyldigt',
+    'Husk sundhedskort',
+    'Tjek rejseforsikring',
+    'Check ind online',
+    'Medbring opladere og adapter',
+    'Veksl valuta',
+    'Tjek vaccinationer',
+  ];
+
   Future<void> _saveBeforeDepartureItems() async {
     if (_group == null) return;
     final groupRef =
         widget.repository.firestore.collection('groups').doc(_group!.groupId);
-    await groupRef.update({'beforeDepartureItems': _beforeDepartureItems});
+    try {
+      await groupRef.update({'beforeDepartureItems': _beforeDepartureItems});
+    } catch (e) {
+      if (mounted) {
+        showErrorSnackbar(
+            context, 'Kunne ikke gemme "Før afrejse": ${describeError(e)}');
+      }
+    }
   }
 
-  void _addOrEditPreDepartureItem({String? existing, int? index}) {
-    final controller = TextEditingController(text: existing ?? '');
+  /// Adds from the inline field at the bottom of the list. Focus stays in
+  /// the field so several points can be typed in a row, one per Enter.
+  Future<void> _addPreDepartureItem([String? text]) async {
+    final value = (text ?? _newPreDepartureController.text).trim();
+    if (value.isEmpty) return;
+    setState(() {
+      _beforeDepartureItems.add(value);
+      if (text == null) _newPreDepartureController.clear();
+    });
+    if (text == null) _newPreDepartureFocus.requestFocus();
+    await _saveBeforeDepartureItems();
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.beige,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: [
-            Icon(existing == null ? Icons.add_circle : Icons.edit,
-                color: AppColors.darkGreen),
-            const SizedBox(width: AppSpacing.md),
-            Text(
-              existing == null ? 'Tilføj Punkt' : 'Rediger Punkt',
-              style:
-                  GoogleFonts.kanit(fontWeight: FontWeight.bold, fontSize: 22),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: _buildDialogField(
-            controller: controller,
-            label: 'Punkt',
-            hint: 'F.eks. Husk pas og forsikringskort',
-            icon: Icons.checklist_outlined,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child:
-                Text('Annuller', style: GoogleFonts.kanit(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.onPrimary,
-              shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            onPressed: () async {
-              if (controller.text.isEmpty) return;
-              setState(() {
-                if (index != null) {
-                  _beforeDepartureItems[index] = controller.text;
-                } else {
-                  _beforeDepartureItems.add(controller.text);
-                }
-              });
-              await _saveBeforeDepartureItems();
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: Text(existing == null ? 'Tilføj' : 'Gem',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+  void _startEditingPreDepartureItem(int index) {
+    setState(() {
+      _editingPreDepartureIndex = index;
+      _editPreDepartureController.text = _beforeDepartureItems[index];
+    });
+  }
+
+  Future<void> _commitPreDepartureEdit() async {
+    final index = _editingPreDepartureIndex;
+    if (index == null) return;
+    final value = _editPreDepartureController.text.trim();
+    final changed = value.isNotEmpty && value != _beforeDepartureItems[index];
+    setState(() {
+      if (changed) _beforeDepartureItems[index] = value;
+      _editingPreDepartureIndex = null;
+    });
+    if (changed) await _saveBeforeDepartureItems();
+  }
+
+  void _cancelPreDepartureEdit() =>
+      setState(() => _editingPreDepartureIndex = null);
+
+  Future<void> _deletePreDepartureItem(int index) async {
+    final removed = _beforeDepartureItems[index];
+    setState(() {
+      _beforeDepartureItems.removeAt(index);
+      _editingPreDepartureIndex = null;
+    });
+    await _saveBeforeDepartureItems();
+    if (!mounted) return;
+    showAppSnackbar(
+      context,
+      'Punkt slettet',
+      actionLabel: 'Fortryd',
+      onAction: () async {
+        setState(() => _beforeDepartureItems.insert(
+            index.clamp(0, _beforeDepartureItems.length), removed));
+        await _saveBeforeDepartureItems();
+      },
     );
   }
 
-  Future<void> _deletePreDepartureItem(int index) async {
-    setState(() => _beforeDepartureItems.removeAt(index));
+  Future<void> _reorderPreDepartureItems(int oldIndex, int newIndex) async {
+    setState(() {
+      if (newIndex > oldIndex) newIndex -= 1;
+      final item = _beforeDepartureItems.removeAt(oldIndex);
+      _beforeDepartureItems.insert(newIndex, item);
+      _editingPreDepartureIndex = null;
+    });
     await _saveBeforeDepartureItems();
   }
 
@@ -784,16 +821,29 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 final preDepartureSection = _buildSectionCard(
                   title: 'Før afrejse',
                   icon: Icons.checklist,
-                  action:
-                      _buildAddChip(onTap: () => _addOrEditPreDepartureItem()),
+                  action: _beforeDepartureItems.isEmpty
+                      ? null
+                      : Text('${_beforeDepartureItems.length} punkter',
+                          style: AppTextStyles.caption()),
                   children: [
-                    if (_beforeDepartureItems.isEmpty)
-                      _buildEmptyRow('Ingen punkter endnu')
-                    else
-                      ..._beforeDepartureItems.asMap().entries.map(
-                            (entry) => _buildPreDepartureItemTile(
-                                entry.value, entry.key),
-                          ),
+                    Text(
+                      'Tjekliste rejsende ser i appen inden afrejse.',
+                      style: AppTextStyles.caption(),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (_beforeDepartureItems.isNotEmpty)
+                      ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        itemCount: _beforeDepartureItems.length,
+                        onReorder: _reorderPreDepartureItems,
+                        itemBuilder: (context, index) =>
+                            _buildPreDepartureItemTile(
+                                _beforeDepartureItems[index], index),
+                      ),
+                    _buildPreDepartureAddField(),
+                    _buildPreDepartureSuggestions(),
                   ],
                 );
 
@@ -1089,57 +1139,182 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   }
 
   Widget _buildPreDepartureItemTile(String item, int index) {
+    final isEditing = _editingPreDepartureIndex == index;
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      key: ValueKey('predep-$index-$item'),
+      margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.02),
+        color: isEditing ? Colors.white : Colors.black.withValues(alpha: 0.02),
         borderRadius: AppRadii.mdRadius,
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: isEditing
+              ? AppColors.darkGreen.withValues(alpha: 0.4)
+              : Colors.black.withValues(alpha: 0.06),
+        ),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-              color: AppColors.darkGreen, shape: BoxShape.circle),
-        ),
-        title: Text(item, style: GoogleFonts.kanit(fontSize: 14)),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.black38, size: 18),
-          shape:
-              RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-          onSelected: (value) {
-            if (value == 'edit') {
-              _addOrEditPreDepartureItem(existing: item, index: index);
-            } else if (value == 'delete') {
-              _deletePreDepartureItem(index);
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit, size: 18, color: AppColors.darkGreen),
-                  const SizedBox(width: 10),
-                  Text('Rediger', style: GoogleFonts.kanit()),
-                ],
+      child: Row(
+        children: [
+          ReorderableDragStartListener(
+            index: index,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                child: Icon(Icons.drag_indicator,
+                    size: 18, color: Colors.black26),
               ),
             ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  const Icon(Icons.delete, size: 18, color: Colors.redAccent),
-                  const SizedBox(width: 10),
-                  Text('Slet', style: GoogleFonts.kanit()),
-                ],
+          ),
+          Expanded(
+            child: isEditing
+                ? CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.escape):
+                          _cancelPreDepartureEdit,
+                    },
+                    child: TextField(
+                      controller: _editPreDepartureController,
+                      autofocus: true,
+                      style: GoogleFonts.kanit(fontSize: 14),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => _commitPreDepartureEdit(),
+                      onTapOutside: (_) => _commitPreDepartureEdit(),
+                    ),
+                  )
+                : Tooltip(
+                    message: 'Klik for at redigere',
+                    waitDuration: const Duration(milliseconds: 600),
+                    child: InkWell(
+                      onTap: () => _startEditingPreDepartureItem(index),
+                      borderRadius: AppRadii.smRadius,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Text(item, style: GoogleFonts.kanit(fontSize: 14)),
+                      ),
+                    ),
+                  ),
+          ),
+          if (isEditing)
+            IconButton(
+              tooltip: 'Gem',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.check, size: 18, color: AppColors.darkGreen),
+              onPressed: _commitPreDepartureEdit,
+            )
+          else
+            IconButton(
+              tooltip: 'Rediger',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.edit_outlined,
+                  size: 17, color: Colors.black38),
+              onPressed: () => _startEditingPreDepartureItem(index),
+            ),
+          IconButton(
+            tooltip: 'Slet',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.delete_outline,
+                size: 18, color: Colors.redAccent),
+            onPressed: () => _deletePreDepartureItem(index),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  /// Always-visible input at the bottom of the list — type and press Enter
+  /// to add, instead of opening a dialog per point.
+  Widget _buildPreDepartureAddField() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _newPreDepartureController,
+        builder: (context, value, _) {
+          final canAdd = value.text.trim().isNotEmpty;
+          return TextField(
+            controller: _newPreDepartureController,
+            focusNode: _newPreDepartureFocus,
+            style: GoogleFonts.kanit(fontSize: 14),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _addPreDepartureItem(),
+            decoration: InputDecoration(
+              hintText: 'Tilføj punkt, f.eks. "Husk pas" — tryk Enter',
+              hintStyle: GoogleFonts.kanit(fontSize: 14, color: Colors.grey[500]),
+              prefixIcon: Icon(Icons.add, color: AppColors.darkGreen),
+              suffixIcon: canAdd
+                  ? Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: ElevatedButton(
+                        onPressed: _addPreDepartureItem,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: AppRadii.smRadius),
+                        ),
+                        child: Text('Tilføj',
+                            style: GoogleFonts.kanit(
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    )
+                  : null,
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: AppRadii.mdRadius,
+                borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: AppRadii.mdRadius,
+                borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: AppRadii.mdRadius,
+                borderSide: BorderSide(color: AppColors.darkGreen, width: 1.5),
               ),
             ),
-          ],
-        ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPreDepartureSuggestions() {
+    final remaining = _preDepartureSuggestions
+        .where((s) => !_beforeDepartureItems
+            .any((item) => item.toLowerCase() == s.toLowerCase()))
+        .toList();
+    if (remaining.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Forslag — klik for at tilføje', style: AppTextStyles.caption()),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final suggestion in remaining)
+                ActionChip(
+                  avatar: Icon(Icons.add, size: 14, color: AppColors.darkGreen),
+                  label: Text(suggestion,
+                      style: GoogleFonts.kanit(fontSize: 12.5)),
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                  shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _addPreDepartureItem(suggestion),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

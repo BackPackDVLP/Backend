@@ -14,6 +14,7 @@ import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/widget/bureauLogoHeader.dart';
 import 'package:backend/widget/logout.dart';
 import 'package:backend/widget/saved_snackbar.dart';
+import 'package:backend/widget/powered_by_backpack.dart';
 import 'package:backend/blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:backend/screens/groupIDscreen/groupIDscreen.dart';
@@ -37,6 +38,7 @@ import 'package:flutter/foundation.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
+import 'package:backend/widget/app_snackbar.dart';
 
 enum SideMenuItem {
   dashboard,
@@ -122,8 +124,17 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
   void _showFilterDialog(Color primaryColor) async {
     final newFilters = await showDialog<_GroupFilters>(
       context: context,
-      builder: (context) =>
-          _FilterDialog(currentFilters: _filters, primaryColor: primaryColor),
+      builder: (context) => _FilterDialog(
+        currentFilters: _filters,
+        primaryColor: primaryColor,
+        departureLocations: (_groups
+                .where((g) => g.isTemplate != true)
+                .map((g) => g.departureFrom.trim())
+                .where((loc) => loc.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort()),
+      ),
     );
 
     if (newFilters != null && mounted) {
@@ -283,9 +294,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         setState(() {
           _groups.removeWhere((g) => g.groupId == group.groupId);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rejse slettet')),
-        );
+        showAppSnackbar(context, 'Rejse slettet');
       }
     });
   }
@@ -313,8 +322,11 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
     }).where((g) {
       // Only current/upcoming trips by default — a trip counts as "past"
       // once its returnDate is before today. Templates have no real trip
-      // dates, so this only applies to the actual Rejser list.
-      if (_showPastTrips || _selectedMenuItem == SideMenuItem.templates) {
+      // dates, so this only applies to the actual Rejser list. An explicit
+      // status filter takes over, so "Afsluttede" can actually show them.
+      if (_showPastTrips ||
+          _filters.status != null ||
+          _selectedMenuItem == SideMenuItem.templates) {
         return true;
       }
       final today = DateUtils.dateOnly(DateTime.now());
@@ -354,8 +366,28 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
         passes = passes && g.flightAway == _filters.flightAway;
       if (_filters.flightHome != null)
         passes = passes && g.flightHome == _filters.flightHome;
+      if (_filters.status != null) {
+        passes = passes && _TripStatus.of(g) == _filters.status;
+      }
+      if (_filters.departureFrom != null) {
+        passes = passes && g.departureFrom.trim() == _filters.departureFrom;
+      }
+      if (_filters.hasGuide != null) {
+        passes = passes && g.guides.isNotEmpty == _filters.hasGuide;
+      }
+      if (_filters.mapEnabled != null) {
+        passes = passes && g.mapEnabled == _filters.mapEnabled;
+      }
       return passes;
     }).toList();
+    // Trips are listed by start date — soonest first unless the filter asks
+    // for latest first. Templates have no real dates, so they keep their
+    // existing order.
+    if (_selectedMenuItem != SideMenuItem.templates) {
+      displayedGroups.sort((a, b) => _filters.newestFirst
+          ? b.departureDate.compareTo(a.departureDate)
+          : a.departureDate.compareTo(b.departureDate));
+    }
 
     return BlocListener<GroupInformationBloc, GroupInformationState>(
       listener: (context, state) {
@@ -365,9 +397,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
             _selectedMenuItem = SideMenuItem.groupOverview;
           });
         } else if (state is GroupInformationError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          showErrorSnackbar(context, state.message);
         }
       },
       child: AgencyPermissionsResolver(
@@ -566,13 +596,7 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 onTap: () {
                   Navigator.pop(sheetContext);
                   if (!agencyInfo.aiTripBuilderEnabled) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'AI Trip Builder er ikke en del af jeres plan endnu — se mere under Indstillinger.',
-                        ),
-                      ),
-                    );
+                    showWarningSnackbar(context, 'AI Trip Builder er ikke en del af jeres plan endnu — se mere under Indstillinger.');
                     return;
                   }
                   Navigator.of(context)
@@ -928,6 +952,11 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                 side: BorderSide(color: Colors.red[700]!),
               ),
             ),
+          ),
+          Divider(height: 1, indent: 16, endIndent: 16, color: Colors.grey[200]),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: PoweredByBackpack(),
           ),
         ],
       ),
@@ -1422,40 +1451,72 @@ class _PastTripsToggle extends StatelessWidget {
   }
 }
 
+/// Where a trip is relative to today — upcoming until it departs, ongoing
+/// through its return date, finished after that.
+enum _TripStatus {
+  upcoming('Kommende'),
+  ongoing('I gang'),
+  finished('Afsluttede');
+
+  const _TripStatus(this.label);
+  final String label;
+
+  static _TripStatus of(GroupInformation g) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (DateUtils.dateOnly(g.departureDate).isAfter(today)) return upcoming;
+    if (DateUtils.dateOnly(g.returnDate).isBefore(today)) return finished;
+    return ongoing;
+  }
+}
+
 class _GroupFilters {
   DateTime? departureDateStart;
   DateTime? departureDateEnd;
   bool? flightAway;
   bool? flightHome;
+  _TripStatus? status;
+  String? departureFrom;
+  bool? hasGuide;
+  bool? mapEnabled;
+  bool newestFirst;
 
-  _GroupFilters({
-    this.departureDateStart,
-    this.departureDateEnd,
-    this.flightAway,
-    this.flightHome,
-  });
+  _GroupFilters({this.newestFirst = false});
 
   // A copy constructor
-  _GroupFilters.from(_GroupFilters other) {
-    departureDateStart = other.departureDateStart;
-    departureDateEnd = other.departureDateEnd;
-    flightAway = other.flightAway;
-    flightHome = other.flightHome;
-  }
+  _GroupFilters.from(_GroupFilters other)
+      : departureDateStart = other.departureDateStart,
+        departureDateEnd = other.departureDateEnd,
+        flightAway = other.flightAway,
+        flightHome = other.flightHome,
+        status = other.status,
+        departureFrom = other.departureFrom,
+        hasGuide = other.hasGuide,
+        mapEnabled = other.mapEnabled,
+        newestFirst = other.newestFirst;
 
+  // Sort order isn't a filter — it doesn't hide anything, so it doesn't
+  // light up the filter badge either.
   bool get isApplied =>
       departureDateStart != null ||
       departureDateEnd != null ||
       flightAway != null ||
-      flightHome != null;
+      flightHome != null ||
+      status != null ||
+      departureFrom != null ||
+      hasGuide != null ||
+      mapEnabled != null;
 }
 
 class _FilterDialog extends StatefulWidget {
   final _GroupFilters currentFilters;
   final Color primaryColor;
+  final List<String> departureLocations;
 
-  const _FilterDialog(
-      {required this.currentFilters, required this.primaryColor});
+  const _FilterDialog({
+    required this.currentFilters,
+    required this.primaryColor,
+    required this.departureLocations,
+  });
 
   @override
   State<_FilterDialog> createState() => _FilterDialogState();
@@ -1508,8 +1569,20 @@ class _FilterDialogState extends State<_FilterDialog> {
     }
   }
 
+  // Quick presets for the most common date questions, so they don't need a
+  // trip through the date range picker.
+  void _setDatePreset(int days) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    setState(() {
+      _filters.departureDateStart = today;
+      _filters.departureDateEnd = today.add(Duration(days: days));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasDateRange = _filters.departureDateStart != null &&
+        _filters.departureDateEnd != null;
     return AlertDialog(
       backgroundColor: AppColors.secondary,
       shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
@@ -1517,35 +1590,97 @@ class _FilterDialogState extends State<_FilterDialog> {
           style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
       content: SingleChildScrollView(
         child: SizedBox(
-          width: 400,
+          width: 420,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Afrejsedato',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w500)),
-              const SizedBox(height: AppSpacing.sm),
+              _sectionTitle('Sortering'),
+              _buildChoiceChips<bool>(
+                options: const {false: 'Tidligste først', true: 'Seneste først'},
+                selected: _filters.newestFirst,
+                onSelected: (val) =>
+                    setState(() => _filters.newestFirst = val ?? false),
+                allowNone: false,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle('Status'),
+              _buildChoiceChips<_TripStatus>(
+                options: {for (final s in _TripStatus.values) s: s.label},
+                selected: _filters.status,
+                onSelected: (val) => setState(() => _filters.status = val),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle('Afrejsedato'),
               InkWell(
                 onTap: _pickDateRange,
                 child: InputDecorator(
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.calendar_today),
+                    suffixIcon: hasDateRange
+                        ? IconButton(
+                            tooltip: 'Ryd datointerval',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => setState(() {
+                              _filters.departureDateStart = null;
+                              _filters.departureDateEnd = null;
+                            }),
+                          )
+                        : null,
                     border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
                     filled: true,
                     fillColor: Colors.white,
                   ),
                   child: Text(
-                    _filters.departureDateStart != null &&
-                            _filters.departureDateEnd != null
+                    hasDateRange
                         ? '${DateFormat('dd/MM/yy').format(_filters.departureDateStart!)} - ${DateFormat('dd/MM/yy').format(_filters.departureDateEnd!)}'
                         : 'Vælg datointerval',
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.xl),
-              Text('Fly inkluderet',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w500)),
               const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: AppSpacing.sm,
+                children: [
+                  for (final preset in const {
+                    'Næste 30 dage': 30,
+                    'Næste 3 mdr.': 90,
+                    'Næste 12 mdr.': 365,
+                  }.entries)
+                    ActionChip(
+                      label: Text(preset.key, style: AppTextStyles.body()),
+                      backgroundColor: Colors.white,
+                      onPressed: () => _setDatePreset(preset.value),
+                    ),
+                ],
+              ),
+              if (widget.departureLocations.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.xl),
+                _sectionTitle('Afrejsested'),
+                DropdownButtonFormField<String?>(
+                  initialValue: widget.departureLocations
+                          .contains(_filters.departureFrom)
+                      ? _filters.departureFrom
+                      : null,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.flight_takeoff),
+                    border: OutlineInputBorder(borderRadius: AppRadii.mdRadius),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Alle')),
+                    for (final loc in widget.departureLocations)
+                      DropdownMenuItem<String?>(value: loc, child: Text(loc)),
+                  ],
+                  onChanged: (val) =>
+                      setState(() => _filters.departureFrom = val),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle('Fly inkluderet'),
               _buildBooleanFilter(
                   label: 'Udrejse',
                   value: _filters.flightAway,
@@ -1557,6 +1692,18 @@ class _FilterDialogState extends State<_FilterDialog> {
                   value: _filters.flightHome,
                   onChanged: (val) =>
                       setState(() => _filters.flightHome = val)),
+              const SizedBox(height: AppSpacing.xl),
+              _sectionTitle('Øvrigt'),
+              _buildBooleanFilter(
+                  label: 'Guide tilknyttet',
+                  value: _filters.hasGuide,
+                  onChanged: (val) => setState(() => _filters.hasGuide = val)),
+              const SizedBox(height: AppSpacing.sm),
+              _buildBooleanFilter(
+                  label: 'Kort aktiveret',
+                  value: _filters.mapEnabled,
+                  onChanged: (val) =>
+                      setState(() => _filters.mapEnabled = val)),
             ],
           ),
         ),
@@ -1566,11 +1713,58 @@ class _FilterDialogState extends State<_FilterDialog> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Annuller')),
         TextButton(
-            onPressed: () => Navigator.pop(context, _GroupFilters()),
+            // Reset clears the filters but keeps the chosen sort order.
+            onPressed: () => Navigator.pop(
+                context, _GroupFilters(newestFirst: _filters.newestFirst)),
             child: const Text('Nulstil')),
         ElevatedButton(
             onPressed: () => Navigator.pop(context, _filters),
             child: const Text('Anvend')),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+        child: Text(text, style: GoogleFonts.kanit(fontWeight: FontWeight.w500)),
+      );
+
+  // Single-select chips in the bureau's theme color. Tapping the selected
+  // chip again clears it (unless [allowNone] is false).
+  Widget _buildChoiceChips<T>({
+    required Map<T, String> options,
+    required T? selected,
+    required ValueChanged<T?> onSelected,
+    bool allowNone = true,
+  }) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (final entry in options.entries)
+          ChoiceChip(
+            label: Text(entry.value),
+            selected: selected == entry.key,
+            showCheckmark: false,
+            backgroundColor: Colors.white,
+            selectedColor: widget.primaryColor.withValues(alpha: 0.15),
+            side: BorderSide(
+              color: selected == entry.key
+                  ? widget.primaryColor.withValues(alpha: 0.6)
+                  : Colors.grey[300]!,
+            ),
+            labelStyle: AppTextStyles.body(
+              color: selected == entry.key ? widget.primaryColor : null,
+            ).copyWith(
+                fontWeight: selected == entry.key ? FontWeight.w600 : null),
+            onSelected: (isSelected) {
+              if (isSelected) {
+                onSelected(entry.key);
+              } else if (allowNone) {
+                onSelected(null);
+              }
+            },
+          ),
       ],
     );
   }
@@ -1691,8 +1885,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl: $e')));
+        showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
       }
     }
   }
@@ -1714,8 +1907,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fejl: $e')));
+        showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
       }
     }
   }
@@ -2048,8 +2240,7 @@ class _BureauSettingsScreenState extends State<BureauSettingsScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Kunne ikke ændre plan: $e')));
+        showErrorSnackbar(context, 'Kunne ikke ændre plan: ${describeError(e)}');
       }
     }
   }
@@ -2690,9 +2881,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke hente billeder: $e')),
-        );
+        showErrorSnackbar(context, 'Kunne ikke hente billeder: ${describeError(e)}');
       }
     }
   }
@@ -2819,10 +3008,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
 
           if (!_isLoadingUsage && _usedBytes + bytes.length > _limitBytes) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(
-                    'Billedbanken er fuld (${_formatGb(_usedBytes)} / ${widget.photoStorageLimitGb.toStringAsFixed(1)} GB). Kontakt BackPack for at få mere plads.'),
-              ));
+              showWarningSnackbar(context, 'Billedbanken er fuld (${_formatGb(_usedBytes)} / ${widget.photoStorageLimitGb.toStringAsFixed(1)} GB). Kontakt BackPack for at få mere plads.');
             }
             return;
           }
@@ -2843,9 +3029,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fejl ved upload: $e')),
-        );
+        showErrorSnackbar(context, 'Fejl ved upload: ${describeError(e)}');
       }
     }
   }
@@ -2884,9 +3068,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
       } catch (e) {
         setState(() => _isLoading = false);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Kunne ikke slette: $e')),
-          );
+          showErrorSnackbar(context, 'Kunne ikke slette: ${describeError(e)}');
         }
       }
     }
@@ -2933,9 +3115,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
       } catch (e) {
         setState(() => _isLoading = false);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Kunne ikke oprette mappe: $e')),
-          );
+          showErrorSnackbar(context, 'Kunne ikke oprette mappe: ${describeError(e)}');
         }
       }
     }
@@ -3058,9 +3238,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fejl ved flytning: $e')),
-        );
+        showErrorSnackbar(context, 'Fejl ved flytning: ${describeError(e)}');
       }
     }
   }
@@ -3072,10 +3250,7 @@ class _AgencyImagesScreenState extends State<AgencyImagesScreen> {
         if (_selectedItems.isEmpty) _isSelectionMode = false;
       } else {
         if (_selectedItems.length >= 5) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Du kan maksimalt vælge 5 billeder ad gangen.')),
-          );
+          showWarningSnackbar(context, 'Du kan maksimalt vælge 5 billeder ad gangen.');
           return;
         }
         _selectedItems.add(path);
@@ -4142,9 +4317,7 @@ class _DuplicateGroupDialogState extends State<_DuplicateGroupDialog> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fejl: $e')),
-        );
+        showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
       }
     }
   }
@@ -4473,9 +4646,7 @@ class _AddGroupDialogState extends State<_AddGroupDialog> {
           Navigator.of(context).pop(group);
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fejl: $e')),
-        );
+        showErrorSnackbar(context, 'Fejl: ${describeError(e)}');
       }
     }
   }

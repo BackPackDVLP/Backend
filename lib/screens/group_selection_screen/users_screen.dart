@@ -7,6 +7,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 /// Agency-scoped view of the app users who are members of at least one of
 /// this bureau's trips. Users can be edited (name/phone/email) or deleted.
@@ -238,17 +239,12 @@ class _UsersScreenState extends State<UsersScreen> {
                 });
               } on FirebaseFunctionsException catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content:
-                            Text(e.message ?? 'Kunne ikke opdatere rejse')),
-                  );
+                  showErrorSnackbar(
+                      context, e.message ?? 'Kunne ikke opdatere rejse');
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Der skete en fejl')),
-                  );
+                  showErrorSnackbar(context, 'Der skete en fejl');
                 }
               } finally {
                 setState(() => pendingGroupIds.remove(groupId));
@@ -729,9 +725,7 @@ class _UsersScreenState extends State<UsersScreen> {
         _groupCache.remove(id);
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bruger opdateret')),
-        );
+        showAppSnackbar(context, 'Bruger opdateret');
       }
     }
   }
@@ -780,19 +774,15 @@ class _UsersScreenState extends State<UsersScreen> {
           .call({'uid': uid, 'agencyCode': widget.agencyCode});
       final partial = result.data?['partial'] == true;
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(partial
+        showAppSnackbar(
+            context,
+            partial
                 ? 'Bruger fjernet fra dette bureaus rejser'
-                : 'Bruger slettet permanent'),
-          ),
-        );
+                : 'Bruger slettet permanent');
       }
     } on FirebaseFunctionsException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Kunne ikke slette bruger')),
-        );
+        showErrorSnackbar(context, e.message ?? 'Kunne ikke slette bruger');
       }
     }
   }
@@ -983,9 +973,7 @@ class _UsersScreenState extends State<UsersScreen> {
     );
 
     if (success && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bruger oprettet')),
-      );
+      showAppSnackbar(context, 'Bruger oprettet');
     }
   }
 

@@ -16,6 +16,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'unsplash_image_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:backend/widget/app_snackbar.dart';
 
 class TimelineDialog extends StatefulWidget {
   final TimelineEvent? event;
@@ -378,9 +379,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
     } catch (e) {
       print('Error saving event: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save changes')),
-        );
+        showErrorSnackbar(context, 'Failed to save changes');
       }
     }
   }
@@ -413,9 +412,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
     } catch (e) {
       print('Error deleting event: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to delete event')),
-        );
+        showErrorSnackbar(context, 'Failed to delete event');
       }
     }
   }
@@ -889,9 +886,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
           errorMessage =
               'Manglende rettigheder (Unauthorized). Kontakt en administrator.';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        showErrorSnackbar(context, errorMessage);
       }
     }
   }
