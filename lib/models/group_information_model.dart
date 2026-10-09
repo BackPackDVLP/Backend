@@ -127,7 +127,19 @@ class GroupInformation extends Equatable {
         bureauName,
         coupons,
         flightAway,
-        flightHome
+        flightHome,
+        mapEnabled,
+        // Everything else the screens show — without these, a refresh that
+        // only changed e.g. a guide or a packing list compared equal to the
+        // current state and was dropped by the bloc.
+        groupId,
+        guides,
+        packinglistCategories,
+        flights,
+        messages,
+        groupName,
+        isTemplate,
+        beforeDepartureItems,
       ];
 
   static List<GroupInformation> groupInformations = [

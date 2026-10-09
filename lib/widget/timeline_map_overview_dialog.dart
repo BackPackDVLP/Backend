@@ -1,16 +1,12 @@
-import 'dart:async';
 import 'package:backend/config/design.dart';
-import 'dart:convert';
-
 import 'package:backend/config/app_colors.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
+import 'package:backend/widget/location_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:backend/widget/app_snackbar.dart';
 
@@ -18,6 +14,10 @@ import 'package:backend/widget/app_snackbar.dart';
 /// map and fix the ones that are missing or plain wrong (e.g. geocoded to
 /// the wrong country), instead of having to open each event's edit dialog
 /// one at a time to find and fix a bad pin.
+///
+/// An event's location can be set three ways: searching in its row,
+/// searching in the box on the map, or selecting the event and clicking
+/// the map. Pins can be dragged to fine-tune them.
 class TimelineMapOverviewDialog extends StatefulWidget {
   final GroupInformation groupInformation;
   final GroupInformationRepository repository;
@@ -33,20 +33,15 @@ class TimelineMapOverviewDialog extends StatefulWidget {
       _TimelineMapOverviewDialogState();
 }
 
-class _TimelineMapOverviewDialogState
-    extends State<TimelineMapOverviewDialog> {
-  // Roughly centered on Denmark — just a reasonable starting point when no
-  // event has a resolved location yet.
-  static const LatLng _defaultCenter = LatLng(56.0, 10.0);
-
+class _TimelineMapOverviewDialogState extends State<TimelineMapOverviewDialog> {
   final MapController _mapController = MapController();
-  // Reused across rebuilds (rather than created inline in the TileLayer) so
-  // repeated setState calls don't spin up a fresh Dio client each time.
-  final CancellableNetworkTileProvider _tileProvider =
-      CancellableNetworkTileProvider();
+  final TextEditingController _mapSearchController = TextEditingController();
   late List<TimelineEvent> _events;
   String? _selectedEventId;
   bool _saving = false;
+  // The last place picked in the map's search box, highlighted on the map
+  // until another search or the label's close button.
+  PlaceSuggestion? _searchHighlight;
 
   @override
   void initState() {
@@ -56,9 +51,14 @@ class _TimelineMapOverviewDialogState
     WidgetsBinding.instance.addPostFrameCallback((_) => _fitToMarkers());
   }
 
-  List<TimelineEvent> get _locatedEvents => _events
-      .where((e) => e.latitude != null && e.longitude != null)
-      .toList();
+  @override
+  void dispose() {
+    _mapSearchController.dispose();
+    super.dispose();
+  }
+
+  List<TimelineEvent> get _locatedEvents =>
+      _events.where((e) => e.latitude != null && e.longitude != null).toList();
 
   /// Event id → the same 1-based number shown on its pin on the map, so the
   /// list can display a matching badge next to each event.
@@ -66,6 +66,13 @@ class _TimelineMapOverviewDialogState
         for (final entry in _locatedEvents.asMap().entries)
           entry.value.id: entry.key + 1,
       };
+
+  TimelineEvent? get _selectedEvent {
+    for (final e in _events) {
+      if (e.id == _selectedEventId) return e;
+    }
+    return null;
+  }
 
   void _fitToMarkers() {
     final points =
@@ -81,13 +88,244 @@ class _TimelineMapOverviewDialogState
     }
   }
 
-  void _onLocationSelected(TimelineEvent updated) {
+  void _replaceEvent(TimelineEvent updated) {
+    final index = _events.indexWhere((e) => e.id == updated.id);
+    if (index != -1) _events[index] = updated;
+  }
+
+  void _selectEvent(TimelineEvent event) {
+    setState(() => _selectedEventId = event.id);
+    if (event.latitude != null && event.longitude != null) {
+      final zoom = _mapController.camera.zoom;
+      _mapController.move(
+          LatLng(event.latitude!, event.longitude!), zoom < 12 ? 12 : zoom);
+    }
+  }
+
+  /// Sets [eventId]'s location. With no [address] (a click or a drag on the
+  /// map), the coordinates are shown until a reverse lookup fills in the
+  /// address at that spot.
+  void _setLocation(String eventId, LatLng point,
+      {String? address, PlaceSuggestion? focus}) {
+    final event = _events.firstWhere((e) => e.id == eventId);
     setState(() {
-      final index = _events.indexWhere((e) => e.id == updated.id);
-      if (index != -1) _events[index] = updated;
-      _selectedEventId = updated.id;
+      _replaceEvent(_withLocation(event,
+          address: address ?? formatLatLng(point),
+          latitude: point.latitude,
+          longitude: point.longitude));
+      _selectedEventId = eventId;
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fitToMarkers());
+    if (focus != null) focusMapOn(_mapController, focus);
+    if (address == null) _fillAddressFromMap(eventId, point);
+  }
+
+  Future<void> _fillAddressFromMap(String eventId, LatLng point) async {
+    final address = await Geocoder.reverse(point);
+    if (!mounted || address == null) return;
+    final event = _events.firstWhere((e) => e.id == eventId);
+    // The pin was moved again (or cleared) while the lookup ran.
+    if (event.latitude != point.latitude ||
+        event.longitude != point.longitude) {
+      return;
+    }
+    setState(() => _replaceEvent(_withLocation(event,
+        address: address,
+        latitude: point.latitude,
+        longitude: point.longitude)));
+  }
+
+  /// Events with no point yet whose location can be guessed from their
+  /// "Land, By eller Område" field. Ones the admin gave a specific address
+  /// are left alone — a guess from the country would be less precise.
+  List<TimelineEvent> get _autoLocatable => _events.where((e) {
+        final country = e.country.trim();
+        final address = (e.address ?? '').trim();
+        return (e.latitude == null || e.longitude == null) &&
+            country.isNotEmpty &&
+            (address.isEmpty || address == country);
+      }).toList();
+
+  /// Looks up each auto-locatable event's country/city, one per ~second
+  /// (Nominatim's usage policy). Results only change this dialog's copy —
+  /// nothing is written until "Gem ændringer".
+  Future<void> _autoLocate() async {
+    final targets = _autoLocatable;
+    if (targets.isEmpty) {
+      final unplaced = _events
+          .where((e) => e.latitude == null || e.longitude == null)
+          .length;
+      showInfoSnackbar(
+          context,
+          unplaced == 0
+              ? 'Alle begivenheder har allerede en placering.'
+              : '$unplaced begivenhed${unplaced == 1 ? '' : 'er'} uden placering har en specifik adresse eller intet land, så de kan ikke findes automatisk. Placér dem ved at søge eller klikke på kortet.');
+      return;
+    }
+    // Unplaced events the auto-lookup will skip because the admin typed a
+    // specific address for them — mentioned in the dialog so nobody wonders
+    // why those stayed empty.
+    final skipped =
+        _events.where((e) => e.latitude == null || e.longitude == null).length -
+            targets.length;
+
+    final found = await showDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _AutoLocateDialog(
+        targets: targets,
+        skippedCount: skipped,
+        locate: _locateFromCountry,
+      ),
+    );
+    if (found == null || !mounted) return;
+
+    _fitToMarkers();
+    showAppSnackbar(
+      context,
+      'Fandt placering for $found af ${targets.length} begivenheder · kontrollér nålene og tryk "Gem ændringer"',
+      type: found == targets.length ? SnackType.success : SnackType.warning,
+      duration: const Duration(seconds: 6),
+    );
+  }
+
+  /// Places [target] from its "Land, By eller Område" text. Returns whether
+  /// a location was found. Leaves it alone if the admin placed it by hand
+  /// while the lookup ran.
+  Future<bool> _locateFromCountry(TimelineEvent target) async {
+    final country = target.country.trim();
+    final List<PlaceSuggestion> results;
+    try {
+      results = await Geocoder.search(country, limit: 1);
+    } catch (_) {
+      return false;
+    }
+    if (!mounted || results.isEmpty) return false;
+    final current = _events.firstWhere((e) => e.id == target.id);
+    if (current.latitude != null) return false;
+    final point = results.first.point;
+    setState(() => _replaceEvent(_withLocation(current,
+        address: country,
+        latitude: point.latitude,
+        longitude: point.longitude)));
+    return true;
+  }
+
+  void _onMapTap(LatLng point) {
+    final selected = _selectedEvent;
+    if (selected == null) {
+      showInfoSnackbar(context, 'Vælg først en begivenhed i listen til højre');
+      return;
+    }
+    _setLocation(selected.id, point);
+  }
+
+  /// Shows the searched place — events are put there from its "+" button
+  /// rather than automatically, so a search never moves a pin by surprise.
+  void _onMapSearchSelected(PlaceSuggestion suggestion) {
+    setState(() => _searchHighlight = suggestion);
+    focusMapOn(_mapController, suggestion);
+    _mapSearchController.clear();
+  }
+
+  /// Puts [event] at the highlighted search result — after a warning if
+  /// that would move a location it already has.
+  Future<void> _placeAtHighlight(TimelineEvent event) async {
+    final place = _searchHighlight;
+    if (place == null) return;
+    if (event.latitude != null && event.longitude != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => _MoveLocationDialog(event: event, place: place),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    _setLocation(event.id, place.point, address: place.displayName);
+    setState(() => _searchHighlight = null);
+  }
+
+  Widget _buildHighlightMenu() {
+    final numbers = _markerNumbers;
+    return PopupMenuButton<TimelineEvent>(
+      tooltip: 'Placér en begivenhed her',
+      padding: EdgeInsets.zero,
+      position: PopupMenuPosition.under,
+      constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
+      color: Colors.white,
+      onSelected: _placeAtHighlight,
+      itemBuilder: (_) => [
+        PopupMenuItem<TimelineEvent>(
+          enabled: false,
+          height: 36,
+          child: Text('Placér begivenhed her',
+              style: GoogleFonts.kanit(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600])),
+        ),
+        for (final event in _events)
+          PopupMenuItem<TimelineEvent>(
+            value: event,
+            child: Row(
+              children: [
+                if (numbers[event.id] != null)
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text('${numbers[event.id]}',
+                        style: GoogleFonts.kanit(
+                            color: AppColors.onPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11)),
+                  )
+                else
+                  const SizedBox(
+                    width: 22,
+                    child: Icon(Icons.error_outline,
+                        color: Colors.orange, size: 18),
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${event.type}${event.country.isNotEmpty ? ' · ${event.country}' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.kanit(
+                            fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        numbers[event.id] != null
+                            ? 'Har allerede en placering'
+                            : 'Mangler placering',
+                        style: GoogleFonts.kanit(
+                            fontSize: 11,
+                            color: numbers[event.id] != null
+                                ? Colors.grey[600]
+                                : Colors.orange[800]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: const HighlightPlusButton(),
+    );
+  }
+
+  void _clearLocation(TimelineEvent event) {
+    setState(() => _replaceEvent(
+        _withLocation(event, address: null, latitude: null, longitude: null)));
   }
 
   Future<void> _save() async {
@@ -116,8 +354,9 @@ class _TimelineMapOverviewDialogState
 
   @override
   Widget build(BuildContext context) {
-    final points =
-        _locatedEvents.map((e) => LatLng(e.latitude!, e.longitude!)).toList();
+    final located = _locatedEvents;
+    final numbers = _markerNumbers;
+    final selected = _selectedEvent;
 
     return Dialog(
       backgroundColor: Colors.white,
@@ -138,6 +377,27 @@ class _TimelineMapOverviewDialogState
                     child: Text('Verificer lokationer på kort',
                         style: AppTextStyles.headingBold()),
                   ),
+                  Tooltip(
+                    message:
+                        'Placér begivenheder uden placering ud fra "Land, By eller Område"',
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : _autoLocate,
+                      icon: const Icon(Icons.my_location, size: 16),
+                      label: Text(
+                          _autoLocatable.isEmpty
+                              ? 'Opdater pinpoints automatisk'
+                              : 'Opdater pinpoints automatisk (${_autoLocatable.length})',
+                          style:
+                              GoogleFonts.kanit(fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey[800],
+                        side: BorderSide(color: Colors.grey.shade400),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: AppRadii.smRadius),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
@@ -153,71 +413,82 @@ class _TimelineMapOverviewDialogState
                   Expanded(
                     flex: 3,
                     child: ClipRRect(
-                      borderRadius:
-                          const BorderRadius.only(bottomLeft: Radius.circular(20)),
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                          initialCenter:
-                              points.isNotEmpty ? points.first : _defaultCenter,
-                          initialZoom: points.isNotEmpty ? 11 : 4,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                            userAgentPackageName:
-                                'dk.backpack-app.controlpanel',
-                            tileProvider: _tileProvider,
-                          ),
-                          if (points.length > 1)
-                            PolylineLayer(polylines: [
-                              Polyline(
-                                points: points,
-                                color: AppColors.primary,
-                                strokeWidth: 3,
-                              ),
-                            ]),
-                          MarkerLayer(
-                            markers: _locatedEvents.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final event = entry.value;
-                              final isSelected = event.id == _selectedEventId;
-                              return Marker(
-                                point: LatLng(event.latitude!, event.longitude!),
-                                width: 36,
-                                height: 36,
-                                child: GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _selectedEventId = event.id),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? Colors.red
-                                          : AppColors.primary,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.white, width: 2),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.25),
-                                          blurRadius: 4,
-                                        ),
-                                      ],
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      '${index + 1}',
-                                      style: GoogleFonts.kanit(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                      borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(20)),
+                      child: PinMap(
+                        controller: _mapController,
+                        initialCenter: located.isNotEmpty
+                            ? LatLng(located.first.latitude!,
+                                located.first.longitude!)
+                            : defaultMapCenter,
+                        initialZoom: located.isNotEmpty ? 11 : 4,
+                        drawRoute: true,
+                        pins: [
+                          for (final e in located)
+                            MapPin(
+                              id: e.id,
+                              point: LatLng(e.latitude!, e.longitude!),
+                              label: '${numbers[e.id]}',
+                              selected: e.id == _selectedEventId,
+                            ),
+                        ],
+                        onTapMap: _onMapTap,
+                        highlight: _searchHighlight,
+                        highlightAction:
+                            _events.isEmpty ? null : _buildHighlightMenu(),
+                        onClearHighlight: () =>
+                            setState(() => _searchHighlight = null),
+                        onTapPin: (id) => setState(() => _selectedEventId = id),
+                        onPinMoved: (id, point) => _setLocation(id, point),
+                        overlays: [
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            right: 12,
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 420),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: PlaceSearchField(
+                                    controller: _mapSearchController,
+                                    onSelected: _onMapSearchSelected,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      prefixIcon:
+                                          const Icon(Icons.search, size: 18),
+                                      hintText: 'Søg adresse eller sted',
+                                      hintStyle: AppTextStyles.body(
+                                          color: Colors.grey[500]),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 12),
+                                      border: OutlineInputBorder(
+                                        borderRadius: AppRadii.smRadius,
+                                        borderSide: BorderSide.none,
                                       ),
                                     ),
                                   ),
                                 ),
-                              );
-                            }).toList(),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 12,
+                            bottom: 12,
+                            right: 12,
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: MapHint(_searchHighlight != null
+                                  ? 'Tryk på + for at placere en begivenhed på det søgte sted'
+                                  : selected != null
+                                      ? 'Klik på kortet for at placere "${selected.type}" · træk i en nål for at flytte den'
+                                      : 'Vælg en begivenhed i listen, og klik på kortet for at placere den · træk i en nål for at flytte den'),
+                            ),
                           ),
                         ],
                       ),
@@ -233,7 +504,7 @@ class _TimelineMapOverviewDialogState
                           child: Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'Søg og vælg den rigtige adresse for hver begivenhed.',
+                              'Vælg en begivenhed, og søg adressen eller klik på kortet.',
                               style: GoogleFonts.kanit(
                                   fontSize: 12, color: Colors.grey[600]),
                             ),
@@ -256,18 +527,13 @@ class _TimelineMapOverviewDialogState
                                     return _EventLocationRow(
                                       key: ValueKey(event.id),
                                       event: event,
-                                      markerNumber: _markerNumbers[event.id],
+                                      markerNumber: numbers[event.id],
                                       isSelected: event.id == _selectedEventId,
-                                      onTapMarker: () {
-                                        setState(
-                                            () => _selectedEventId = event.id);
-                                        _mapController.move(
-                                          LatLng(
-                                              event.latitude!, event.longitude!),
-                                          14,
-                                        );
-                                      },
-                                      onLocationSelected: _onLocationSelected,
+                                      onSelect: () => _selectEvent(event),
+                                      onSuggestionSelected: (s) => _setLocation(
+                                          event.id, s.point,
+                                          address: s.displayName, focus: s),
+                                      onCleared: () => _clearLocation(event),
                                     );
                                   },
                                 ),
@@ -350,31 +616,24 @@ TimelineEvent _withLocation(
   );
 }
 
-class _AddressSuggestion {
-  final String displayName;
-  final double lat;
-  final double lon;
-
-  const _AddressSuggestion(
-      {required this.displayName, required this.lat, required this.lon});
-}
-
 class _EventLocationRow extends StatefulWidget {
   final TimelineEvent event;
   // The same 1-based number shown on this event's pin on the map, if it has
   // a resolved location — null when it doesn't have one yet.
   final int? markerNumber;
   final bool isSelected;
-  final VoidCallback onTapMarker;
-  final ValueChanged<TimelineEvent> onLocationSelected;
+  final VoidCallback onSelect;
+  final ValueChanged<PlaceSuggestion> onSuggestionSelected;
+  final VoidCallback onCleared;
 
   const _EventLocationRow({
     super.key,
     required this.event,
     required this.markerNumber,
     required this.isSelected,
-    required this.onTapMarker,
-    required this.onLocationSelected,
+    required this.onSelect,
+    required this.onSuggestionSelected,
+    required this.onCleared,
   });
 
   @override
@@ -383,10 +642,6 @@ class _EventLocationRow extends StatefulWidget {
 
 class _EventLocationRowState extends State<_EventLocationRow> {
   late final TextEditingController _controller;
-  Timer? _debounce;
-  bool _loading = false;
-  String? _error;
-  List<_AddressSuggestion> _suggestions = [];
 
   @override
   void initState() {
@@ -406,93 +661,8 @@ class _EventLocationRowState extends State<_EventLocationRow> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
-  }
-
-  void _onChanged(String value) {
-    _debounce?.cancel();
-    setState(() {
-      _suggestions = [];
-      _error = null;
-    });
-    if (value.trim().length < 3) return;
-    _debounce = Timer(const Duration(milliseconds: 500), () => _search(value));
-  }
-
-  Future<void> _search(String query) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'q': query,
-        'format': 'json',
-        'limit': '5',
-      });
-      final response = await http.get(
-        uri,
-        headers: {
-          'User-Agent': 'BackpackControlpanel/1.0 (contact@backpack-app.dk)'
-        },
-      );
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final results = (jsonDecode(response.body) as List)
-            .cast<Map<String, dynamic>>();
-        setState(() {
-          _loading = false;
-          _suggestions = results
-              .map((r) => _AddressSuggestion(
-                    displayName: r['display_name'] as String,
-                    lat: double.parse(r['lat'] as String),
-                    lon: double.parse(r['lon'] as String),
-                  ))
-              .toList();
-          if (_suggestions.isEmpty) {
-            _error = 'Ingen resultater. Prøv en mere præcis adresse.';
-          }
-        });
-      } else {
-        setState(() {
-          _loading = false;
-          _error = 'Fejl ved opslag.';
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Fejl ved opslag.';
-      });
-    }
-  }
-
-  void _select(_AddressSuggestion suggestion) {
-    setState(() {
-      _controller.text = suggestion.displayName;
-      _suggestions = [];
-    });
-    widget.onLocationSelected(_withLocation(
-      widget.event,
-      address: suggestion.displayName,
-      latitude: suggestion.lat,
-      longitude: suggestion.lon,
-    ));
-  }
-
-  void _clear() {
-    setState(() {
-      _controller.clear();
-      _suggestions = [];
-      _error = null;
-    });
-    widget.onLocationSelected(
-      _withLocation(widget.event, address: null, latitude: null, longitude: null),
-    );
   }
 
   @override
@@ -500,25 +670,25 @@ class _EventLocationRowState extends State<_EventLocationRow> {
     final hasLocation =
         widget.event.latitude != null && widget.event.longitude != null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: widget.isSelected
-            ? AppColors.primary.withOpacity(0.08)
-            : Colors.grey.withOpacity(0.05),
-        borderRadius: AppRadii.mdRadius,
-        border: Border.all(
-          color: widget.isSelected ? AppColors.primary : Colors.transparent,
-          width: 1.5,
+    return GestureDetector(
+      onTap: widget.onSelect,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: widget.isSelected
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : Colors.grey.withValues(alpha: 0.05),
+          borderRadius: AppRadii.mdRadius,
+          border: Border.all(
+            color: widget.isSelected ? AppColors.primary : Colors.transparent,
+            width: 1.5,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: hasLocation ? widget.onTapMarker : null,
-            child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
                 if (hasLocation && widget.markerNumber != null)
                   Container(
@@ -545,81 +715,395 @@ class _EventLocationRowState extends State<_EventLocationRow> {
                 Expanded(
                   child: Text(
                     '${widget.event.type}${widget.event.country.isNotEmpty ? ' · ${widget.event.country}' : ''}',
-                    style:
-                        GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 13),
+                    style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600, fontSize: 13),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _controller,
-            onChanged: _onChanged,
-            style: AppTextStyles.body(),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              hintText: 'Søg adresse eller by',
-              hintStyle: AppTextStyles.body(),
-              suffixIcon: _loading
-                  ? const Padding(
-                      padding: EdgeInsets.all(AppSpacing.md),
-                      child: SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : (_controller.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 16),
-                          onPressed: _clear,
-                        )
-                      : null),
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(_error!,
-                  style: GoogleFonts.kanit(color: Colors.red, fontSize: 11)),
-            ),
-          if (_suggestions.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.only(top: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
+            const SizedBox(height: 6),
+            PlaceSearchField(
+              controller: _controller,
+              onSelected: widget.onSuggestionSelected,
+              onCleared: widget.onCleared,
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                hintText: 'Søg adresse eller by',
+                hintStyle: AppTextStyles.body(),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
+            ),
+            if (hasLocation)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${widget.event.latitude!.toStringAsFixed(4)}, ${widget.event.longitude!.toStringAsFixed(4)}',
+                  style:
+                      GoogleFonts.kanit(fontSize: 10, color: Colors.grey[600]),
+                ),
+              )
+            else if (widget.isSelected)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Klik på kortet for at placere denne begivenhed',
+                  style: GoogleFonts.kanit(
+                      fontSize: 10.5, color: AppColors.primary),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Explains that automatic pinpoints are guessed from each event's
+/// "Land, By eller Område" text and must be checked afterwards, then — on
+/// "Fortsæt" — runs the lookups with progress shown in the same dialog.
+/// Pops with the number of events placed, or null if cancelled.
+class _AutoLocateDialog extends StatefulWidget {
+  final List<TimelineEvent> targets;
+  final int skippedCount;
+  final Future<bool> Function(TimelineEvent event) locate;
+
+  const _AutoLocateDialog({
+    required this.targets,
+    required this.skippedCount,
+    required this.locate,
+  });
+
+  @override
+  State<_AutoLocateDialog> createState() => _AutoLocateDialogState();
+}
+
+class _AutoLocateDialogState extends State<_AutoLocateDialog> {
+  bool _running = false;
+  int _done = 0;
+  int _found = 0;
+
+  Future<void> _run() async {
+    setState(() => _running = true);
+    for (final target in widget.targets) {
+      if (_done > 0) {
+        // Nominatim's free usage policy caps requests at 1 per second.
+        await Future.delayed(const Duration(milliseconds: 1100));
+      }
+      if (!mounted) return;
+      if (await widget.locate(target)) _found++;
+      if (!mounted) return;
+      setState(() => _done++);
+    }
+    if (mounted) Navigator.pop(context, _found);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.targets.length;
+    final current = _running && _done < total ? widget.targets[_done] : null;
+
+    return PopScope(
+      canPop: !_running,
+      child: Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 200),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: _suggestions
-                    .map((s) => InkWell(
-                          onTap: () => _select(s),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 8),
-                            child: Text(s.displayName,
-                                style: GoogleFonts.kanit(fontSize: 12)),
-                          ),
-                        ))
-                    .toList(),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor:
+                            AppColors.primary.withValues(alpha: 0.15),
+                        child: Icon(Icons.my_location,
+                            color: AppColors.primary.computeLuminance() > 0.6
+                                ? Colors.black87
+                                : AppColors.primary),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text('Opdater pinpoints automatisk',
+                            style: AppTextStyles.headingBold()),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  if (!_running)
+                    ..._buildIntro(total)
+                  else
+                    ..._buildProgress(total, current),
+                ],
               ),
             ),
-          if (hasLocation)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildIntro(int total) {
+    return [
+      Text(
+        '$total begivenhed${total == 1 ? '' : 'er'} uden placering bliver sat på kortet ud fra det, der står i "Land, By eller Område".',
+        style: GoogleFonts.kanit(fontSize: 14, color: Colors.black87),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.1),
+          borderRadius: AppRadii.mdRadius,
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded,
+                color: Colors.orange[800], size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Kontrollér nålene bagefter',
+                      style: GoogleFonts.kanit(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange[900])),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Placeringen er et gæt ud fra den indtastede by, land eller område — fx midt i byen eller midt i landet. Et navn kan også findes flere steder i verden. Gennemgå derfor hver nål, og flyt den, hvis den ligger forkert.',
+                    style: AppTextStyles.body(color: Colors.grey[800]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (widget.skippedCount > 0) ...[
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, size: 18, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Expanded(
               child: Text(
-                '${widget.event.latitude!.toStringAsFixed(4)}, ${widget.event.longitude!.toStringAsFixed(4)}',
-                style: GoogleFonts.kanit(fontSize: 10, color: Colors.grey[600]),
+                '${widget.skippedCount} begivenhed${widget.skippedCount == 1 ? '' : 'er'} med en specifik adresse eller uden land røres ikke.',
+                style: AppTextStyles.body(color: Colors.grey[700]),
               ),
             ),
+          ],
+        ),
+      ],
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        'Intet gemmes, før du trykker "Gem ændringer".',
+        style: AppTextStyles.caption(),
+      ),
+      const SizedBox(height: AppSpacing.xxl),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Annuller',
+                style: GoogleFonts.kanit(color: Colors.grey[600])),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          ElevatedButton.icon(
+            onPressed: _run,
+            icon: const Icon(Icons.my_location, size: 18),
+            label: Text('Fortsæt',
+                style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: AppRadii.smRadius),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _buildProgress(int total, TimelineEvent? current) {
+    final spinnerColor = AppColors.primary.computeLuminance() > 0.6
+        ? Colors.grey[800]!
+        : AppColors.primary;
+    return [
+      const SizedBox(height: AppSpacing.sm),
+      Center(
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: CircularProgressIndicator(
+            strokeWidth: 3.5,
+            color: spinnerColor,
+          ),
+        ),
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      Text(
+        'Finder placering ${(_done + 1).clamp(1, total)} af $total',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.kanit(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      if (current != null)
+        Text(
+          '${current.type} · ${current.country.trim()}',
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.body(color: Colors.grey[600]),
+        ),
+      const SizedBox(height: AppSpacing.lg),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          value: total == 0 ? null : _done / total,
+          minHeight: 6,
+          color: spinnerColor,
+          backgroundColor: Colors.grey.withValues(alpha: 0.15),
+        ),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      Text(
+        'Det tager ca. et sekund pr. begivenhed.',
+        textAlign: TextAlign.center,
+        style: AppTextStyles.caption(),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+    ];
+  }
+}
+
+/// Warns before putting an already-placed event at a searched spot, which
+/// would move its pin away from where it is now.
+class _MoveLocationDialog extends StatelessWidget {
+  final TimelineEvent event;
+  final PlaceSuggestion place;
+
+  const _MoveLocationDialog({required this.event, required this.place});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: AppRadii.lgRadius),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Colors.orange.withValues(alpha: 0.15),
+                    child: Icon(Icons.warning_amber_rounded,
+                        color: Colors.orange[800]),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text('Flyt placering?',
+                        style: AppTextStyles.headingBold()),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                '"${event.type}" har allerede en placering. Vil du flytte den hertil?',
+                style: GoogleFonts.kanit(fontSize: 14, color: Colors.black87),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              _row(
+                  Icons.place_outlined,
+                  'Nu',
+                  event.address?.isNotEmpty == true
+                      ? event.address!
+                      : '${event.latitude!.toStringAsFixed(4)}, ${event.longitude!.toStringAsFixed(4)}',
+                  Colors.grey[600]!),
+              const SizedBox(height: AppSpacing.sm),
+              _row(Icons.arrow_forward, 'Ny', place.displayName,
+                  const Color(0xFFE5484D)),
+              const SizedBox(height: AppSpacing.xxl),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text('Annuller',
+                        style: GoogleFonts.kanit(color: Colors.grey[600])),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[800],
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: AppRadii.smRadius),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 22, vertical: 12),
+                    ),
+                    child: Text('Flyt hertil',
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(IconData icon, String label, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Colors.grey.withValues(alpha: 0.06),
+        borderRadius: AppRadii.mdRadius,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 28,
+            child: Text(label,
+                style: GoogleFonts.kanit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700])),
+          ),
+          Expanded(
+            child: Text(text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.body()),
+          ),
         ],
       ),
     );

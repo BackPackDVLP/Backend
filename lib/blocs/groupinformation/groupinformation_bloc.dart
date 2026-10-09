@@ -17,6 +17,7 @@ class GroupInformationBloc
         super(GroupInformationInitial()) {
     on<LoadGroupInformation>(_onLoadGroupInformation);
     on<LoadGroupInformationById>(_onLoadGroupInformationById);
+    on<RefreshGroupInformationById>(_onRefreshGroupInformationById);
     on<LoadGroupsByAgency>(_onLoadGroupsByAgency);
     on<LogoutEvent>(_onLogout);
     on<ChangeGroupEvent>(_onChangeGroup);
@@ -51,6 +52,26 @@ class GroupInformationBloc
       }
     } catch (error) {
       emit(GroupInformationError(message: 'Failed to load group: $error'));
+    }
+  }
+
+  Future<void> _onRefreshGroupInformationById(
+    RefreshGroupInformationById event,
+    Emitter<GroupInformationState> emit,
+  ) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(event.groupId)
+          .get();
+      if (snapshot.exists) {
+        emit(GroupInformationLoaded(
+            groupInformation: GroupInformation.fromSnapshot(snapshot),
+            groupId: event.groupId));
+      }
+    } catch (_) {
+      // Keep showing the current state — the edit itself already saved,
+      // and the next full load will pick it up.
     }
   }
 

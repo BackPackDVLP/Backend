@@ -1,11 +1,9 @@
-import 'dart:convert';
 import 'package:backend/config/design.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:backend/config/app_colors.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:backend/models/group_information_model.dart';
 import 'package:backend/models/coupon_model.dart';
@@ -13,15 +11,6 @@ import 'package:backend/models/agencyInformation.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:backend/widget/app_snackbar.dart';
-
-class _MapBackfillPlan {
-  final List<Map<String, dynamic>> events;
-  final List<int> toGeocode;
-  final int customCount;
-
-  _MapBackfillPlan(
-      {required this.events, required this.toGeocode, required this.customCount});
-}
 
 class GroupDetailsScreen extends StatefulWidget {
   final String groupId;
@@ -62,9 +51,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   final _emergencyPhoneController = TextEditingController();
   bool _flightAway = false;
   bool _flightHome = false;
-  bool _mapEnabled = false;
-  bool _mapEnabledAtLoad = false;
-  bool _backfillingMapLocations = false;
   List<String> _beforeDepartureItems = [];
   final _newPreDepartureController = TextEditingController();
   final _newPreDepartureFocus = FocusNode();
@@ -94,7 +80,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
     // Read straight from Firestore, not repository.getGroupInformation():
     // that stream yields the Hive-cached copy first, which can be stale or
     // lossy — and since this screen writes whole fields back (the "Før
-    // afrejse" list, mapEnabled, coupons), editing on top of a stale copy
+    // afrejse" list, coupons), editing on top of a stale copy
     // silently overwrote what was actually saved.
     final GroupInformation group;
     try {
@@ -123,8 +109,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       _emergencyPhoneController.text = group.emergencyPhone ?? '';
       _flightAway = group.flightAway;
       _flightHome = group.flightHome;
-      _mapEnabled = group.mapEnabled;
-      _mapEnabledAtLoad = group.mapEnabled;
       _beforeDepartureItems = List.from(group.beforeDepartureItems ?? []);
       _loading = false;
     });
@@ -148,8 +132,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Future<void> _saveGroupDetails() async {
     if (_group == null || !_formKey.currentState!.validate()) return;
 
-    final justEnabledMap = _mapEnabled && !_mapEnabledAtLoad;
-
     try {
       final groupRef =
           widget.repository.firestore.collection('groups').doc(_group!.groupId);
@@ -165,224 +147,19 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         'emergencyPhone': _emergencyPhoneController.text,
         'flightAway': _flightAway,
         'flightHome': _flightHome,
-        'mapEnabled': _mapEnabled,
       });
 
       // Optionally, reload the main group info in the BLoC
       // context.read<GroupInformationBloc>().add(LoadGroupInformationById(groupId: _group!.groupId));
 
-      _mapEnabledAtLoad = _mapEnabled;
-
       if (mounted) {
         showAppSnackbar(context, 'Details saved');
-      }
-
-      // The map was just switched on — backfill coordinates for every
-      // existing timeline event that has a location but no point yet,
-      // instead of leaving them unresolved until each is opened by hand.
-      if (justEnabledMap) {
-        final snapshot = await groupRef.get();
-        final data = snapshot.data();
-        if (data != null) {
-          await _runMapBackfill(groupRef, _planMapBackfill(data));
-        }
       }
     } catch (e) {
       if (mounted) {
         showErrorSnackbar(context, 'Error saving details: ${describeError(e)}');
       }
     }
-  }
-
-  /// Splits a group's timeline events into ones safe to auto-geocode from
-  /// the "country" field and ones the admin already gave a specific
-  /// address (address text differs from country) — those are always left
-  /// alone, whether or not they've been resolved to a point yet.
-  _MapBackfillPlan _planMapBackfill(Map<String, dynamic> data) {
-    final events = List<Map<String, dynamic>>.from(
-      (data['timelineEvents'] as List? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map)),
-    );
-
-    final toGeocode = <int>[];
-    var customCount = 0;
-
-    for (var i = 0; i < events.length; i++) {
-      final country = (events[i]['country'] as String?)?.trim() ?? '';
-      final address = (events[i]['address'] as String?)?.trim() ?? '';
-      final hasCoords =
-          events[i]['latitude'] != null && events[i]['longitude'] != null;
-      final isCustomAddress = address.isNotEmpty && address != country;
-
-      if (isCustomAddress) {
-        customCount++;
-        continue;
-      }
-      if (country.isNotEmpty && !hasCoords) {
-        toGeocode.add(i);
-      }
-    }
-
-    return _MapBackfillPlan(
-        events: events, toGeocode: toGeocode, customCount: customCount);
-  }
-
-  /// Geocodes the planned events' "country" field via OpenStreetMap's free
-  /// Nominatim geocoder and writes the result back. Runs sequentially with
-  /// a delay between lookups to respect Nominatim's 1-request-per-second
-  /// usage policy.
-  Future<void> _runMapBackfill(dynamic groupRef, _MapBackfillPlan plan) async {
-    if (_backfillingMapLocations || plan.toGeocode.isEmpty) return;
-
-    setState(() => _backfillingMapLocations = true);
-    if (mounted) {
-      showInfoSnackbar(context, 'Finder placeringer for ${plan.toGeocode.length} begivenheder...', duration: const Duration(seconds: 3));
-    }
-
-    var resolvedCount = 0;
-    for (final index in plan.toGeocode) {
-      final country = (plan.events[index]['country'] as String).trim();
-      try {
-        final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-          'q': country,
-          'format': 'json',
-          'limit': '1',
-        });
-        final response = await http.get(uri, headers: {
-          'User-Agent': 'BackpackControlpanel/1.0 (kontakt@backpack-app.dk)',
-        });
-
-        if (response.statusCode == 200) {
-          final results = jsonDecode(response.body) as List;
-          if (results.isNotEmpty) {
-            final first = results.first as Map<String, dynamic>;
-            final lat = double.tryParse(first['lat'] as String);
-            final lng = double.tryParse(first['lon'] as String);
-            if (lat != null && lng != null) {
-              plan.events[index]['address'] = country;
-              plan.events[index]['latitude'] = lat;
-              plan.events[index]['longitude'] = lng;
-              resolvedCount++;
-            }
-          }
-        }
-      } catch (e) {
-        print('Error geocoding "$country" during map backfill: $e');
-      }
-
-      // Nominatim's free usage policy caps requests at 1 per second.
-      await Future.delayed(const Duration(milliseconds: 1100));
-    }
-
-    await groupRef.update({'timelineEvents': plan.events});
-
-    if (mounted) {
-      setState(() => _backfillingMapLocations = false);
-      showInfoSnackbar(context, 'Kort: fandt placering for $resolvedCount af ${plan.toGeocode.length} begivenheder');
-    } else {
-      _backfillingMapLocations = false;
-    }
-  }
-
-  /// Manual, always-available trigger for the map pinpoint backfill —
-  /// covers groups made before this feature existed, or ones where the
-  /// map switch was already on so the save-time auto-trigger never fires.
-  Future<void> _manualUpdateMapPinpoints() async {
-    if (_group == null || _backfillingMapLocations) return;
-
-    final groupRef =
-        widget.repository.firestore.collection('groups').doc(_group!.groupId);
-    final snapshot = await groupRef.get();
-    final data = snapshot.data();
-    if (data == null) return;
-
-    final plan = _planMapBackfill(data);
-
-    if (plan.toGeocode.isEmpty) {
-      if (mounted) {
-        showInfoSnackbar(context, plan.customCount > 0
-              ? 'Alle begivenheder har allerede en placering (${plan.customCount} har en specifik adresse og røres ikke).'
-              : 'Alle begivenheder har allerede en placering.');
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final confirmed = await _showMapBackfillConfirmDialog(plan);
-    if (confirmed != true) return;
-
-    await _runMapBackfill(groupRef, plan);
-  }
-
-  Future<bool?> _showMapBackfillConfirmDialog(_MapBackfillPlan plan) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.beige,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: [
-            Icon(Icons.map_outlined, color: AppColors.darkGreen),
-            const SizedBox(width: AppSpacing.md),
-            Text('Opdater pinpoints',
-                style:
-                    GoogleFonts.kanit(fontWeight: FontWeight.bold, fontSize: 20)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                'Finder placering for ${plan.toGeocode.length} begivenhed${plan.toGeocode.length == 1 ? '' : 'er'} ud fra landefeltet.',
-                style: GoogleFonts.kanit(fontSize: 14)),
-            if (plan.customCount > 0) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.12),
-                  borderRadius: AppRadii.mdRadius,
-                  border: Border.all(color: Colors.orange.withOpacity(0.4)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        color: Colors.orange, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                          '${plan.customCount} begivenhed${plan.customCount == 1 ? '' : 'er'} har en specifik adresse indtastet manuelt. De røres ikke af denne handling.',
-                          style: AppTextStyles.body()),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Annuller',
-                style: GoogleFonts.kanit(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.onPrimary,
-              shape:
-                  RoundedRectangleBorder(borderRadius: AppRadii.mdRadius),
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Fortsæt',
-                style: GoogleFonts.kanit(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
   }
 
   void _addOrEditCoupon({Coupon? existingCoupon}) {
@@ -776,45 +553,6 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                       value: _flightHome,
                       onChanged: (val) => setState(() => _flightHome = val),
                     ),
-                    _buildCompactSwitch(
-                      icon: Icons.map_outlined,
-                      label: '"Vis kort"-knap',
-                      subtitle: _mapEnabled
-                          ? 'Vises på rejsekortet i appen'
-                          : 'Skjult i appen',
-                      value: _mapEnabled,
-                      onChanged: (val) => setState(() => _mapEnabled = val),
-                    ),
-                    if (_mapEnabled)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4, left: 46),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: _backfillingMapLocations
-                                ? null
-                                : _manualUpdateMapPinpoints,
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 4),
-                            ),
-                            icon: _backfillingMapLocations
-                                ? SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.primary),
-                                  )
-                                : const Icon(Icons.my_location, size: 16),
-                            label: Text(
-                                'Opdater pinpoints automatisk',
-                                style: GoogleFonts.kanit(
-                                    fontSize: 13, fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                      ),
                   ],
                 );
 

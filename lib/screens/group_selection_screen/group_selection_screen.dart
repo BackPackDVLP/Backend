@@ -14,6 +14,7 @@ import 'package:backend/models/timeline_event_model.dart';
 import 'package:backend/widget/bureauLogoHeader.dart';
 import 'package:backend/widget/logout.dart';
 import 'package:backend/widget/saved_snackbar.dart';
+import 'package:backend/widget/support_dialog.dart';
 import 'package:backend/widget/powered_by_backpack.dart';
 import 'package:backend/blocs/groupinformation/groupinformation_bloc.dart';
 import 'package:backend/repositories/groupInformation/groupInformation_repository.dart';
@@ -936,6 +937,24 @@ class _GroupSelectionScreenState extends State<GroupSelectionScreen> {
                         agencyInfo,
                         isDrawer),
                 ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: OutlinedButton.icon(
+              onPressed: () => showSupportDialog(
+                context,
+                mainColor: primaryColor,
+                agencyCode: agencyInfo.agencyCode,
+                agencyName: agencyInfo.agencyName,
+              ),
+              icon: const Icon(Icons.support_agent),
+              label: const Text('Support'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                foregroundColor: Colors.grey[800],
+                side: BorderSide(color: Colors.grey[400]!),
               ),
             ),
           ),

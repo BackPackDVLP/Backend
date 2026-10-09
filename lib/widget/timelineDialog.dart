@@ -17,6 +17,9 @@ import 'unsplash_image_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:backend/widget/app_snackbar.dart';
+import 'package:backend/widget/location_picker.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class TimelineDialog extends StatefulWidget {
   final TimelineEvent? event;
@@ -84,7 +87,15 @@ class _TimelineDialogState extends State<TimelineDialog> {
   // the two fields stop tracking each other.
   bool _addressAutoSynced = false;
   bool _syncingAddressFromCountry = false;
+  // Set while a click/drag on the mini map writes the looked-up address
+  // into the field, so that write doesn't count as an edit that
+  // invalidates the point it came from.
+  bool _settingAddressFromMap = false;
+  // The listener also fires on cursor/selection moves; only a real text
+  // change should invalidate the resolved point.
+  String _lastAddressText = '';
   Timer? _geocodeDebounce;
+  final MapController _miniMapController = MapController();
 
   @override
   void initState() {
@@ -124,6 +135,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
 
     _latitude = widget.event?.latitude;
     _longitude = widget.event?.longitude;
+    _lastAddressText = addressController.text;
 
     addressController.addListener(_onAddressFieldChanged);
     countryController.addListener(_onCountryFieldChanged);
@@ -183,6 +195,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
   /// change that didn't come from the country-sync above is the admin
   /// taking manual control, so auto-sync stops from here on.
   void _onAddressFieldChanged() {
+    if (addressController.text == _lastAddressText) return;
+    _lastAddressText = addressController.text;
+    if (_settingAddressFromMap) return;
     final manualEdit = !_syncingAddressFromCountry;
     final hadCoordinates = _latitude != null || _longitude != null;
     if (manualEdit && _addressAutoSynced) {
@@ -250,6 +265,7 @@ class _TimelineDialogState extends State<TimelineDialog> {
             _longitude = double.tryParse(first['lon'] as String);
             _geocoding = false;
           });
+          _moveMiniMap();
           return;
         }
       }
@@ -265,6 +281,53 @@ class _TimelineDialogState extends State<TimelineDialog> {
         _geocodeError = 'Fejl ved opslag. Prøv igen.';
       });
     }
+  }
+
+  void _moveMiniMap({PlaceSuggestion? focus}) {
+    if (_latitude == null || _longitude == null) return;
+    final point = LatLng(_latitude!, _longitude!);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Throws if the mini map isn't attached yet (e.g. a resolve that lands
+      // before its first frame) — it then starts centered there anyway.
+      try {
+        if (focus != null) {
+          focusMapOn(_miniMapController, focus);
+        } else {
+          _miniMapController.move(point, 13);
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _onSuggestionSelected(PlaceSuggestion suggestion) {
+    setState(() {
+      _addressAutoSynced = false;
+      _latitude = suggestion.point.latitude;
+      _longitude = suggestion.point.longitude;
+      _geocodeError = null;
+    });
+    _moveMiniMap(focus: suggestion);
+  }
+
+  /// A click or drag on the mini map — the pin is placed exactly there,
+  /// and the address field shows what's at that spot once it's looked up.
+  Future<void> _placePinFromMap(LatLng point) async {
+    _geocodeDebounce?.cancel();
+    setState(() {
+      _addressAutoSynced = false;
+      _latitude = point.latitude;
+      _longitude = point.longitude;
+      _geocodeError = null;
+    });
+    final address = await Geocoder.reverse(point);
+    if (!mounted ||
+        _latitude != point.latitude ||
+        _longitude != point.longitude) {
+      return;
+    }
+    _settingAddressFromMap = true;
+    addressController.text = address ?? formatLatLng(point);
+    _settingAddressFromMap = false;
   }
 
   Future<void> _saveChanges() async {
@@ -1560,8 +1623,9 @@ class _TimelineDialogState extends State<TimelineDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextField(
+                child: PlaceSearchField(
                   controller: addressController,
+                  onSelected: _onSuggestionSelected,
                   style: GoogleFonts.kanit(fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'Adresse eller by (til kort)',
@@ -1635,9 +1699,42 @@ class _TimelineDialogState extends State<TimelineDialog> {
                       ? 'Finder stedet...'
                       : _addressAutoSynced
                           ? 'Følger automatisk "Land, By eller Område" — rediger for at bruge en anden adresse'
-                          : 'Tryk på knappen for at finde stedet på kortet',
+                          : 'Vælg et forslag, tryk på knappen, eller klik på kortet',
                   style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[500])),
             ),
+          const SizedBox(height: AppSpacing.sm),
+          ClipRRect(
+            borderRadius: AppRadii.mdRadius,
+            child: SizedBox(
+              height: 240,
+              child: PinMap(
+                controller: _miniMapController,
+                initialCenter:
+                    resolved ? LatLng(_latitude!, _longitude!) : defaultMapCenter,
+                initialZoom: resolved ? 13 : 4,
+                pins: [
+                  if (resolved)
+                    MapPin(
+                        id: 'event', point: LatLng(_latitude!, _longitude!)),
+                ],
+                onTapMap: _placePinFromMap,
+                onPinMoved: (_, point) => _placePinFromMap(point),
+                overlays: [
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    right: 8,
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: MapHint(resolved
+                          ? 'Træk i nålen eller klik et andet sted for at flytte den'
+                          : 'Klik på kortet for at placere nålen'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

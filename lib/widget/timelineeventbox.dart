@@ -58,10 +58,10 @@ class TimelineEventBox extends StatelessWidget {
                       );
                     },
                   );
-                  // After the dialog is closed, trigger a refresh of the group information.
+                  // After the dialog is closed, refresh the group information in place.
                   if (context.mounted) {
                     context.read<GroupInformationBloc>().add(
-                        LoadGroupInformationById(
+                        RefreshGroupInformationById(
                             groupId: groupInformation.groupId));
                   }
                 },

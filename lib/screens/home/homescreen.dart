@@ -30,6 +30,7 @@ import 'package:backend/widget/phone_number_field.dart';
 import 'package:backend/widget/timelineeventbox.dart';
 import '../../widget/timelineDialog.dart';
 import '../../widget/timeline_map_overview_dialog.dart';
+import '../../widget/map_backfill.dart';
 import '../../widget/departurebox2.dart';
 import '../../widget/returnbox2.dart';
 import '../../blocs/groupinformation/groupinformation_bloc.dart';
@@ -80,6 +81,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // until closed and reopened. Bound to the dialog's own rebuild function
   // while it's open (null otherwise) so document changes show immediately.
   VoidCallback? _documentsDialogRefresh;
+
+  // True while the trip's map is being switched on/off (and, when switched
+  // on, its events auto-located) — disables the map switch meanwhile.
+  bool _mapBusy = false;
+  // The switch's new value, shown immediately while the save and refresh
+  // are still on their way; cleared once the group data catches up.
+  bool? _pendingMapEnabled;
 
   @override
   void initState() {
@@ -910,6 +918,201 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) => onRefreshBinding?.call(null));
   }
 
+  // --- TRIP MAP ---
+  // The trip's map is switched on/off and edited from the bar at the top of
+  // the timeline — next to the events it shows — rather than from the
+  // details screen.
+
+  void _reloadGroup(String groupId) {
+    context
+        .read<GroupInformationBloc>()
+        .add(RefreshGroupInformationById(groupId: groupId));
+  }
+
+  DocumentReference<Map<String, dynamic>> _groupRef(String groupId) => context
+      .read<GroupInformationRepository>()
+      .firestore
+      .collection('groups')
+      .doc(groupId);
+
+  Future<void> _setMapEnabled(GroupInformation groupInfo, bool enabled) async {
+    setState(() {
+      _mapBusy = true;
+      _pendingMapEnabled = enabled;
+    });
+    final groupRef = _groupRef(groupInfo.groupId);
+    try {
+      await groupRef.update({'mapEnabled': enabled});
+      if (mounted) _reloadGroup(groupInfo.groupId);
+
+      // Just switched on — place every event that has a location but no
+      // point yet, instead of leaving them unplaced until opened by hand.
+      if (enabled) {
+        final data = (await groupRef.get()).data();
+        final plan = data == null ? null : planMapBackfill(data);
+        if (plan != null && plan.toGeocode.isNotEmpty) {
+          if (mounted) {
+            showInfoSnackbar(context,
+                'Finder placeringer for ${plan.toGeocode.length} begivenheder...',
+                duration: const Duration(seconds: 3));
+          }
+          final resolved = await runMapBackfill(groupRef, plan);
+          if (mounted) {
+            showInfoSnackbar(context,
+                'Kort: fandt placering for $resolved af ${plan.toGeocode.length} begivenheder');
+            _reloadGroup(groupInfo.groupId);
+          }
+        } else if (mounted) {
+          showAppSnackbar(context, 'Kortet er slået til');
+        }
+      } else if (mounted) {
+        showAppSnackbar(context, 'Kortet er slået fra');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _pendingMapEnabled = null);
+        showErrorSnackbar(
+            context, 'Kunne ikke opdatere kortet: ${describeError(e)}');
+      }
+    } finally {
+      if (mounted) setState(() => _mapBusy = false);
+    }
+  }
+
+  Future<void> _openMapOverview(GroupInformation groupInfo) async {
+    final result = await showDialog(
+      context: context,
+      builder: (context) => TimelineMapOverviewDialog(
+        groupInformation: groupInfo,
+        repository: context.read<GroupInformationRepository>(),
+      ),
+    );
+    if (result == true && mounted) _reloadGroup(groupInfo.groupId);
+  }
+
+  Widget _buildMapPill(GroupInformation groupInfo) {
+    if (_pendingMapEnabled == groupInfo.mapEnabled) _pendingMapEnabled = null;
+    final enabled = _pendingMapEnabled ?? groupInfo.mapEnabled;
+    final total = groupInfo.timelineEvents.length;
+    final missing = groupInfo.timelineEvents
+        .where((e) => e.latitude == null || e.longitude == null)
+        .length;
+    final accent = enabled ? AppColors.primary : Colors.grey[600]!;
+
+    return Tooltip(
+      message: !enabled
+          ? 'Kortet er slået fra · de rejsende ser det ikke i appen'
+          : missing == 0
+              ? (total == 0
+                  ? 'Kortet er slået til'
+                  : 'Alle $total begivenheder er placeret')
+              : '$missing af $total begivenhed${total == 1 ? '' : 'er'} mangler en placering',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 38,
+        padding: const EdgeInsets.only(left: 10),
+        decoration: BoxDecoration(
+          color: enabled
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : Colors.grey.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: enabled
+                ? AppColors.primary.withValues(alpha: 0.45)
+                : Colors.grey.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _mapBusy
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child:
+                        CircularProgressIndicator(strokeWidth: 2, color: accent),
+                  )
+                : Icon(Icons.map_outlined, size: 18, color: accent),
+            const SizedBox(width: 6),
+            Text('Kort',
+                style: GoogleFonts.kanit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87)),
+            Transform.scale(
+              scale: 0.72,
+              child: Switch(
+                value: enabled,
+                activeTrackColor: AppColors.primary,
+                activeThumbColor: AppColors.onPrimary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onChanged:
+                    _mapBusy ? null : (v) => _setMapEnabled(groupInfo, v),
+              ),
+            ),
+            if (enabled) ...[
+              Container(
+                width: 1,
+                height: 22,
+                color: AppColors.primary.withValues(alpha: 0.3),
+              ),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _openMapOverview(groupInfo),
+                  borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(999)),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 12, 0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Åbn kort',
+                            style: GoogleFonts.kanit(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary.computeLuminance() >
+                                        0.6
+                                    ? Colors.black87
+                                    : AppColors.primary)),
+                        if (missing > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 18),
+                            height: 18,
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[700],
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text('$missing',
+                                style: GoogleFonts.kanit(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white)),
+                          ),
+                        ] else ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.chevron_right,
+                              size: 18,
+                              color: AppColors.primary.computeLuminance() > 0.6
+                                  ? Colors.black54
+                                  : AppColors.primary),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ] else
+              const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
   // --- TIMELINE ---
   Widget _buildTimeline(BuildContext context, GroupInformation groupInfo,
       List<dynamic> sortableEvents) {
@@ -925,28 +1128,8 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildPanelHeader(
                 Icons.timeline,
                 'Rejseforløb',
-                trailing: (groupInfo.mapEnabled && widget.canEditTrips)
-                    ? IconButton(
-                        tooltip: 'Verificer lokationer på kort',
-                        icon: Icon(Icons.map_outlined,
-                            color: AppColors.primary, size: 20),
-                        onPressed: () async {
-                          final result = await showDialog(
-                            context: context,
-                            builder: (context) => TimelineMapOverviewDialog(
-                              groupInformation: groupInfo,
-                              repository:
-                                  context.read<GroupInformationRepository>(),
-                            ),
-                          );
-                          if (result == true && mounted) {
-                            context.read<GroupInformationBloc>().add(
-                                LoadGroupInformationById(
-                                    groupId: groupInfo.groupId));
-                          }
-                        },
-                      )
-                    : null,
+                trailing:
+                    widget.canEditTrips ? _buildMapPill(groupInfo) : null,
               ),
               Expanded(
                 child: ListView.builder(
@@ -1032,7 +1215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (result != null && mounted) {
                   context.read<GroupInformationBloc>().add(
-                      LoadGroupInformationById(groupId: groupInfo.groupId));
+                      RefreshGroupInformationById(groupId: groupInfo.groupId));
                 }
               },
               backgroundColor: AppColors.primary,
@@ -2822,7 +3005,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (dialogContext.mounted) {
           dialogContext
               .read<GroupInformationBloc>()
-              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+              .add(RefreshGroupInformationById(groupId: groupInfo.groupId));
           Navigator.of(dialogContext).pop();
         }
       },
@@ -2842,7 +3025,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .deleteGuide(groupInfo.groupId, index);
         if (context.mounted) {
           context.read<GroupInformationBloc>().add(
-              LoadGroupInformationById(groupId: groupInfo.groupId));
+              RefreshGroupInformationById(groupId: groupInfo.groupId));
         }
       },
     );
@@ -3050,7 +3233,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // This will run for edits and successful adds
           dialogContext
               .read<GroupInformationBloc>()
-              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+              .add(RefreshGroupInformationById(groupId: groupInfo.groupId));
           Navigator.of(dialogContext).pop();
         }
       },
@@ -3070,7 +3253,7 @@ class _HomeScreenState extends State<HomeScreen> {
             .deleteMember(groupInfo.groupId, index);
         if (context.mounted) {
           context.read<GroupInformationBloc>().add(
-              LoadGroupInformationById(groupId: groupInfo.groupId));
+              RefreshGroupInformationById(groupId: groupInfo.groupId));
         }
       },
     );
@@ -3454,7 +3637,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 }
                                 if (context.mounted) {
                                   context.read<GroupInformationBloc>().add(
-                                      LoadGroupInformationById(groupId: groupInfo.groupId));
+                                      RefreshGroupInformationById(groupId: groupInfo.groupId));
                                 }
                                 Navigator.pop(dialogContext);
                               },
@@ -3489,7 +3672,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (context.mounted) {
           context
               .read<GroupInformationBloc>()
-              .add(LoadGroupInformationById(groupId: groupInfo.groupId));
+              .add(RefreshGroupInformationById(groupId: groupInfo.groupId));
         }
       },
     );
@@ -3803,7 +3986,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           groupInfo.groupId, newCategory));
                                     }
                                     await Future.wait(futures);
-                                    bloc.add(LoadGroupInformationById(
+                                    bloc.add(RefreshGroupInformationById(
                                         groupId: groupInfo.groupId));
                                   },
                             child: Text(
